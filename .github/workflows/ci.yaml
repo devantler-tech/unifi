@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: "ci-${{ github.event.number || github.sha }}"
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate (OpenTofu)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@847eaa4afeb791b06daa46e8eafa8b1b68d7cfb4 # v2.0.1
+        with:
+          tofu_wrapper: false
+
+      - name: Format
+        run: tofu fmt -check -recursive
+
+      - name: Init (no backend)
+        run: tofu init -backend=false
+
+      - name: Validate
+        run: tofu validate -no-color
