@@ -19,7 +19,12 @@ architecture.
 
 - **Import-first.** Bring an existing object under management with `tofu import`
   / an `import {}` block so its first `tofu plan` is a **no-op**; only then edit.
-  Never add a `resource` for an existing object without importing it.
+  Never add a `resource` for an existing object without importing it. **Keep the
+  `import {}` block permanently** — it is the under-management proof the CI guard
+  (`scripts/check-import-first.sh`) checks, since state lives in-cluster and a CLI
+  import leaves no trace in `*.tf`. For a genuinely *new* object the network does
+  not have yet, put a reviewed `# import-first:new <reason>` comment on the line
+  directly above the `resource` (the one audited escape hatch).
 - **No backend block, no committed state.** tofu-controller owns state.
   `*.tfstate*` and `.terraform/` are git-ignored.
 - **No committed secrets.** `unifi_api_key`, WLAN passphrases, RADIUS secrets etc.
@@ -34,9 +39,14 @@ architecture.
 tofu fmt -recursive
 tofu init -backend=false
 tofu validate
+./scripts/check-import-first.sh        # import-first golden-rule guard
+./scripts/check-import-first.test.sh   # the guard's own self-test
+tflint                                 # HCL hygiene (install: brew install tflint)
 ```
 
-CI (`.github/workflows/ci.yaml`) re-runs fmt-check + init + validate on every PR.
+CI (`.github/workflows/ci.yaml`) re-runs all of the above on every PR — fmt-check
++ init + validate, the import-first guard (+ its self-test), and `tflint` — and
+aggregates them into the single required `CI - Required Checks` status.
 Commit `.terraform.lock.hcl` to pin providers for reproducible reconciles.
 
 ## Maintenance (autonomous AI assistant)

@@ -13,6 +13,9 @@ instructions) — keep both in sync.
   `tofu import` / an `import {}` block so its first plan is a **no-op**. Flag
   any PR that adds a `resource` for an object that already exists without a
   corresponding import — applying it can recreate/replace live network config.
+  The `import {}` block is kept **permanently** as the under-management proof
+  (CI runs `scripts/check-import-first.sh`); a genuinely new object is the only
+  exception and must carry a reviewed `# import-first:new <reason>` marker.
 - **No destructive drive-by changes.** Flag edits that would force-replace a
   `unifi_network`, `unifi_wlan`, or firewall resource (e.g. changing an
   immutable field) unless the PR body calls it out and it is intended.
@@ -28,8 +31,9 @@ instructions) — keep both in sync.
   must not declare one).
 
 ## Terraform hygiene
-- Code must pass `tofu fmt -check -recursive` and `tofu validate` — flag
-  formatting drift and invalid config.
+- Code must pass `tofu fmt -check -recursive`, `tofu validate` and `tflint`
+  (recommended `terraform` ruleset) — flag formatting drift, invalid config,
+  deprecated syntax and unused declarations.
 - Pin the provider with a `~>` constraint in `versions.tf`; commit
   `.terraform.lock.hcl` so reconciles are reproducible. Flag an unpinned or
   removed provider constraint.
