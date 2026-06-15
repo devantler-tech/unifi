@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@847eaa4afeb791b06daa46e8eafa8b1b68d7cfb4 # v2.0.1
@@ -33,3 +35,54 @@ jobs:
 
       - name: Validate
         run: tofu validate -no-color
+
+  import-first:
+    name: Import-First Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Self-test the guard
+        run: ./scripts/check-import-first.test.sh
+
+      - name: Enforce import-first on the configuration
+        run: ./scripts/check-import-first.sh
+
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93 # v6.2.2
+
+      - name: Init TFLint
+        run: tflint --init
+
+      - name: Run TFLint
+        run: tflint --format compact
+
+  ci-required-checks:
+    name: CI - Required Checks
+    runs-on: ubuntu-latest
+    needs: [validate, import-first, tflint]
+    permissions: {}
+    if: ${{ always() }}
+    steps:
+      - name: 📊 Require all CI checks to pass
+        uses: devantler-tech/actions/aggregate-job-checks@0e1232924bf8b07a40b1b24e13e200744fbabcfa # v6.0.0
+        with:
+          job-results: ${{ needs.validate.result }} ${{ needs.import-first.result }} ${{ needs.tflint.result }}
