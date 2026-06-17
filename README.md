@@ -29,7 +29,9 @@ existing object under management:
 3. Run `tofu plan` and confirm **no changes**.
 4. Only then edit attributes to change the network.
 
-An empty configuration (as shipped) plans to "No changes" — a safe no-op.
+An empty configuration (as shipped) plans to "No changes" — a safe no-op. For
+the step-by-step procedure (with worked examples and how to find a live object's
+id), see the [runbooks](docs/runbook.md).
 
 ## Authentication
 
@@ -43,6 +45,9 @@ the platform from `variables-cluster` (SOPS-encrypted) — **never commit it her
 | `unifi_api_key` | API key (sensitive) |
 | `unifi_site` | Site to manage (default `default`) |
 | `unifi_allow_insecure` | Skip TLS verify — only for a self-signed cert |
+
+Creating the service account, minting the key, and rotating it are covered in
+the [service-account runbook](docs/runbook.md#runbook-b--service-account--api-key-rotation).
 
 ## Local use (read-only / planning)
 
