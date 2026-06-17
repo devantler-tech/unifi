@@ -34,8 +34,9 @@ An empty configuration (as shipped) plans to "No changes" — a safe no-op.
 ## Authentication
 
 API-key auth (UniFi Controller ≥ 9.0.108). Use a dedicated service account with a
-**Limited Admin, Local Access Only** role. The key is supplied to the reconciler by
-the platform from `variables-cluster` (SOPS-encrypted) — **never commit it here**.
+**Limited Admin, Local Access Only** role. This repo is **public and holds no
+secrets**: the key lives in the platform's secret store (OpenBao) and is pulled
+into the reconciler by an External Secret — **never commit it here**.
 
 | Variable | Meaning |
 | --- | --- |
