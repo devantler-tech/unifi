@@ -13,7 +13,9 @@ provider. It is a **platform tenant**: reconciled continuously by tofu-controlle
 on [devantler-tech/platform](https://github.com/devantler-tech/platform) (a
 `Terraform` CR pulls this repo as a Flux `GitRepository` and applies it to the
 controller API; state lives in a Kubernetes Secret). See `README.md` for the
-architecture.
+architecture and [`docs/runbook.md`](docs/runbook.md) for the operational
+procedures (import-first onboarding with worked examples + finding object ids;
+service-account setup & API-key rotation; troubleshooting).
 
 ## Non-negotiables
 
