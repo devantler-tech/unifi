@@ -1,9 +1,8 @@
 # AGENTS.md — unifi
 
 Conventions for AI agents (Claude Code, Copilot, Cursor, Codex, …) working in this
-repo. This is the **canonical**, cross-tool instructions file; `.github/copilot-instructions.md`
-is the review-focused subset Copilot reads, and `CLAUDE.md` shims to this file.
-Keep all three in sync.
+repo. This is the **canonical**, cross-tool instructions file — what GitHub Copilot
+code review reads, with `CLAUDE.md` shimming to this file. Keep them in sync.
 
 ## What this repo is
 
