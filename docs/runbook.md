@@ -159,38 +159,54 @@ admin login.
 
 ### Where the key lives (the secret flow)
 
-The key is **not** stored in this repo. It is provisioned by the
-[platform](https://github.com/devantler-tech/platform), SOPS-encrypted:
+The key is **not** stored in this repo. It lives in
+[platform](https://github.com/devantler-tech/platform)'s **OpenBao** and is read
+into the cluster by an ExternalSecret:
 
 ```
 controller (mint key)
-   │  paste into the SOPS-encrypted value in platform `variables-cluster`
+   │  write the real value IN PLACE (OpenBao UI/CLI)
    ▼
-platform variables-cluster (SOPS)  ──►  seeded into OpenBao (PushSecret)
-   │  ExternalSecret in the `unifi` namespace
+OpenBao  secret/infrastructure/unifi/controller  { api_url, api_key }
+   │  platform `vault-config` Job seeds PLACEHOLDERS here on first run (only if absent)
+   │  ExternalSecret `unifi-credentials` (unifi namespace, refresh 1h)
    ▼
-tofu-controller Terraform CR  ──►  unifi_api_key variable  ──►  controller API
+tofu-controller Terraform CR (varsFrom)  ──►  unifi_api_url / unifi_api_key  ──►  controller API
 ```
 
-So onboarding the key is a **platform-side** change (edit the SOPS-encrypted
-`variables-cluster` entry), not a change here. This repo only declares the
-`unifi_api_key` variable (`sensitive = true`) and **must never** contain the
-value or a committed `*.tfvars`.
+The platform `vault-config` Job seeds **placeholder** values at
+`secret/infrastructure/unifi/controller`, but only when that path is absent — so a
+re-run never clobbers a real value (the same pattern as the GitHub App creds).
+Onboarding the key is therefore an **OpenBao** change — *not* a repo change and
+*not* a SOPS `variables-cluster` edit: overwrite the placeholders in place via the
+OpenBao UI or CLI, e.g.
+
+```sh
+bao kv put -mount=secret infrastructure/unifi/controller \
+  api_url="https://unifi.example.com" \
+  api_key="…"   # base URL has NO /api suffix; Limited-Admin, Local-Access-Only key
+```
+
+The `unifi-credentials` ExternalSecret refreshes within the hour (or force a sync)
+and tofu-controller picks up the value on its next reconcile. This repo only
+declares the `unifi_api_key` variable (`sensitive = true`) and **must never**
+contain the value or a committed `*.tfvars`.
 
 ### Rotate the key
 
 1. On the controller, **create a new API key** on the `unifi-tofu` account
    (don't delete the old one yet).
-2. Update the SOPS-encrypted `unifi_api_key` value in the platform
-   `variables-cluster` and let the platform re-seed OpenBao; the ExternalSecret
-   refreshes the in-cluster secret.
+2. Overwrite the `api_key` at `secret/infrastructure/unifi/controller` in OpenBao
+   (UI/CLI, in place); the `unifi-credentials` ExternalSecret refreshes the
+   in-cluster secret within the hour.
 3. Confirm a reconcile still **no-ops** (the `Terraform` CR plans clean, or run a
    local `tofu plan` with the new key).
 4. **Revoke the old key** on the controller.
 
-Rotate on a schedule and immediately if a key is ever exposed. Because the key is
-SOPS-encrypted and Local-Access-Only/Limited-Admin, blast radius is bounded to
-this site's network config.
+Rotate on a schedule and immediately if a key is ever exposed. Because the key
+lives only in OpenBao (encrypted at rest, backed up via Raft snapshots) and is
+Local-Access-Only/Limited-Admin, blast radius is bounded to this site's network
+config.
 
 ---
 
