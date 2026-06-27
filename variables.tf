@@ -12,8 +12,9 @@ variable "unifi_api_key" {
   sensitive   = true
   description = <<-EOT
     UniFi controller API key (requires controller >= 9.0.108). Use a dedicated
-    service account with a Limited Admin, Local Access Only role. Supplied by
-    the platform from `variables-cluster`; never commit it to this repo.
+    service account with a Limited Admin, Local Access Only role. Supplied by the
+    platform from OpenBao (`secret/infrastructure/unifi/controller`); never commit
+    it to this repo.
   EOT
 }
 
