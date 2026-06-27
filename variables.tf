@@ -1,10 +1,7 @@
-variable "unifi_api_url" {
-  type        = string
-  description = <<-EOT
-    Base URL of the UniFi controller API. Do NOT include the `/api` path — the
-    SDK discovers the correct paths (supports UDM-Pro style and standard
-    controllers). Example: https://unifi.example.com
-  EOT
+variable "unifi_allow_insecure" {
+  type        = bool
+  default     = false
+  description = "Skip TLS verification of the controller API. Set true only for a self-signed certificate."
 }
 
 variable "unifi_api_key" {
@@ -17,14 +14,17 @@ variable "unifi_api_key" {
   EOT
 }
 
+variable "unifi_api_url" {
+  type        = string
+  description = <<-EOT
+    Base URL of the UniFi controller API. Do NOT include the `/api` path — the
+    SDK discovers the correct paths (supports UDM-Pro style and standard
+    controllers). Example: https://unifi.example.com
+  EOT
+}
+
 variable "unifi_site" {
   type        = string
   default     = "default"
   description = "UniFi site this configuration manages."
-}
-
-variable "unifi_allow_insecure" {
-  type        = bool
-  default     = false
-  description = "Skip TLS verification of the controller API. Set true only for a self-signed certificate."
 }
