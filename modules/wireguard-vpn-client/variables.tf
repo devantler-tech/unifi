@@ -7,18 +7,18 @@ variable "egress_interface" {
 variable "interface_dns" {
   type        = list(string)
   default     = ["1.1.1.1"]
-  description = "Tunnel interface DNS. Required by the controller for a wireguard-client."
+  description = "DNS servers for the WireGuard interface (1-2 addresses, required for manual mode)."
 }
 
 variable "name" {
   type        = string
   default     = "cluster-wireguard"
-  description = "Name of the UniFi vpn-client network."
+  description = "Name of the UniFi WireGuard VPN client."
 }
 
 variable "peer_endpoint" {
   type        = string
-  description = "Host or IP of the remote WireGuard server the gateway dials."
+  description = "IP address of the remote WireGuard server (the Talos control plane) the gateway dials."
 }
 
 variable "peer_port" {
@@ -32,9 +32,15 @@ variable "peer_public_key" {
   description = "Public key of the remote WireGuard server (the Talos control plane)."
 }
 
+variable "private_key" {
+  type        = string
+  sensitive   = true
+  description = "The gateway's own WireGuard private key (base64), generated out-of-band. Its matching public key is added as a peer on the remote server."
+}
+
 variable "routes" {
   type        = list(string)
-  description = "Destination subnets (CIDR) routed through the tunnel. `vpn_client_default_route` stays false, so only these go over the VPN."
+  description = "Destination subnets (CIDR) routed through the tunnel via a traffic route (default_route stays false, so only these go over the VPN)."
 }
 
 variable "tunnel_address" {

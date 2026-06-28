@@ -5,10 +5,11 @@ terraform {
 
   required_providers {
     unifi = {
-      # Maintained fork of paultyng/unifi: API-key auth, UniFi Controller v6+
-      # (incl. v9.x), UDM/UDM-Pro/UCG. https://github.com/filipowm/terraform-provider-unifi
-      source  = "filipowm/unifi"
-      version = "~> 1.0"
+      # ubiquiti-community/unifi: a plugin-framework provider for the UniFi
+      # Controller (API-key auth, UDM/UDM-Pro/UCG) with first-class VPN
+      # resources. https://github.com/ubiquiti-community/terraform-provider-unifi
+      source  = "ubiquiti-community/unifi"
+      version = "~> 0.53.0"
     }
   }
 

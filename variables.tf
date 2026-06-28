@@ -1,3 +1,15 @@
+variable "gateway_wireguard_private_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = <<-EOT
+    The UniFi gateway's own WireGuard private key (base64), for the cluster VPN
+    client. Generated out-of-band (`wg genkey`); its public key is added as a
+    peer on the Talos WireGuard server. Supplied by the platform (OpenBao);
+    never commit it. Empty until the platform WireGuard server is provisioned.
+  EOT
+}
+
 variable "unifi_allow_insecure" {
   type        = bool
   default     = false

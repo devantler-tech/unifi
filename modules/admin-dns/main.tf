@@ -8,7 +8,7 @@
 resource "unifi_dns_record" "this" {
   for_each = toset(var.hostnames)
 
-  name   = each.value
-  type   = "A"
-  record = var.gateway_vip
+  name        = each.value
+  record_type = "A"
+  value       = var.gateway_vip
 }

@@ -6,14 +6,20 @@
 # together. The IMPORT-FIRST golden rule (docs/runbook.md) is enforced
 # per-resource inside each module.
 #
-# STATUS: prepared, not yet applicable. The WireGuard client needs (1) a
-# filipowm/unifi release with the vpn-client schema (#147) and (2) the platform
-# Talos WireGuard server + internal admin gateway for the real peer/VIP values
-# below. Provider docs: https://search.opentofu.org/provider/filipowm/unifi/latest
+# STATUS: prepared, pending the platform WireGuard server. The provider and its
+# VPN resources are released, so this validates and is mergeable today; applying
+# it needs (1) the Talos control-plane WireGuard server for the real peer
+# endpoint/public key (placeholders below) and the gateway's private key (a
+# sensitive variable, seeded into OpenBao), and (2) the internal admin gateway
+# for the DNS VIP. Provider docs:
+# https://search.opentofu.org/provider/ubiquiti-community/unifi/latest
 # =============================================================================
 
 module "wireguard_vpn_client" {
   source = "./modules/wireguard-vpn-client"
+
+  # The gateway's own WireGuard private key (sensitive; supplied by the platform).
+  private_key = var.gateway_wireguard_private_key
 
   # TODO(platform WG server): real values once the Talos control-plane WireGuard
   # server exists. Both are non-secret (a public key and a public endpoint).
