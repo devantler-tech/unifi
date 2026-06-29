@@ -1,0 +1,101 @@
+# Split-horizon local DNS: resolve the admin-UI hostnames to the cluster's
+# internal gateway VIP (reachable only through the WireGuard tunnel) instead of
+# the public load balancer. Admin access is then VPN-only by topology — the VIP
+# lives inside the WireGuard subnet, so the only route to it is the gateway
+# tunnel, and no "force VPN" firewall rule is needed. Dex and oauth2-proxy
+# intentionally stay public and are not listed here.
+#
+# New objects: these admin hostnames have no UniFi DNS record yet, so Crossplane
+# creates them. The VIP value is a WS3 placeholder until the internal gateway
+# exists. To adopt an existing record instead, set crossplane.io/external-name
+# to its UniFi id — see docs/runbook.md.
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-observability
+spec:
+  forProvider:
+    name: observability.platform.devantler.tech # Coroot
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-hubble
+spec:
+  forProvider:
+    name: hubble.platform.devantler.tech
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-ksail
+spec:
+  forProvider:
+    name: ksail.platform.devantler.tech
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-vault
+spec:
+  forProvider:
+    name: vault.platform.devantler.tech # OpenBao
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-opencost
+spec:
+  forProvider:
+    name: opencost.platform.devantler.tech
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-longhorn
+spec:
+  forProvider:
+    name: longhorn.platform.devantler.tech
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: admin-headlamp
+spec:
+  forProvider:
+    name: headlamp.platform.devantler.tech
+    recordType: A
+    value: 10.200.0.10
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

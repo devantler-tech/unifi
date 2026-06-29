@@ -12,77 +12,44 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate (OpenTofu)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@847eaa4afeb791b06daa46e8eafa8b1b68d7cfb4 # v2.0.1
-        with:
-          tofu_wrapper: false
-
-      - name: Format
-        run: tofu fmt -check -recursive
-
-      - name: Init (no backend)
-        run: tofu init -backend=false
-
-      - name: Validate
-        run: tofu validate -no-color
-
-  import-first:
-    name: Import-First Guard
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-
-      - name: Self-test the guard
-        run: ./scripts/check-import-first.test.sh
-
-      - name: Enforce import-first on the configuration
-        run: ./scripts/check-import-first.sh
-
-  tflint:
-    name: TFLint
+    name: Validate (Crossplane manifests)
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KUSTOMIZE_VERSION: v5.7.1
+      KUBECONFORM_VERSION: v0.7.0
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93 # v6.2.2
+      - name: Install kustomize + kubeconform
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar -xz kustomize
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar -xz kubeconform
+          sudo install -m 0755 kustomize kubeconform /usr/local/bin/
 
-      - name: Init TFLint
-        run: tflint --init
+      - name: Build manifests
+        run: kustomize build . > manifests.yaml
 
-      - name: Run TFLint
-        run: tflint --format compact
+      - name: Validate manifests
+        # Structural + Kubernetes-schema validation. The UniFi MR kinds are
+        # CRDs from provider-upjet-unifi, validated authoritatively server-side
+        # by the API server / Crossplane at apply time (and locally against the
+        # provider CRDs — see AGENTS.md), so skip their missing client schemas here.
+        run: kubeconform -strict -ignore-missing-schemas -summary -verbose manifests.yaml
 
   ci-required-checks:
     name: CI - Required Checks
     runs-on: ubuntu-latest
-    needs: [validate, import-first, tflint]
+    needs: [validate]
     permissions: {}
     if: ${{ always() }}
     steps:
       - name: 📊 Require all CI checks to pass
         uses: devantler-tech/actions/aggregate-job-checks@0e1232924bf8b07a40b1b24e13e200744fbabcfa # v6.0.0
         with:
-          job-results: ${{ needs.validate.result }} ${{ needs.import-first.result }} ${{ needs.tflint.result }}
+          job-results: ${{ needs.validate.result }}

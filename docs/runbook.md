@@ -1,150 +1,123 @@
 # Runbooks — operating the UniFi network as code
 
-End-to-end procedures for the two operations that actually onboard and run this
-network. Read [`README.md`](../README.md) first for the architecture and the
-[`AGENTS.md`](../AGENTS.md) non-negotiables — the **import-first** golden rule
-below is the repo's central safety property.
+End-to-end procedures for the operations that onboard and run this network. Read
+[`README.md`](../README.md) first for the architecture and the
+[`AGENTS.md`](../AGENTS.md) non-negotiables — the **adopt-first** golden rule below
+is the repo's central safety property.
 
-- [Runbook A — add a resource import-first](#runbook-a--add-a-resource-import-first)
+- [Runbook A — add a resource adopt-first](#runbook-a--add-a-resource-adopt-first)
 - [Runbook B — service account & API-key rotation](#runbook-b--service-account--api-key-rotation)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Runbook A — add a resource import-first
+## Runbook A — add a resource adopt-first
 
-> **Why:** this repo carries **no committed state** — tofu-controller owns state
-> in-cluster. A `resource` block added without first importing the live object
-> makes the very next `tofu apply` (run by the reconciler) **create or replace**
-> it, which can wipe or duplicate live network config. Importing first makes the
-> first plan a **no-op**; you only change the network once you choose to.
+> **Why:** a Managed Resource reconciles toward the controller continuously. If you
+> add one for an object that **already exists** without telling Crossplane which
+> live object it is, the provider creates a **duplicate** (or, on a name clash,
+> errors). Adopting first — binding the MR to the live object's id — makes the first
+> reconcile a **no-op read**; you only change the network once you choose to. A
+> genuinely **new** object (nothing to adopt) is simply created — that is the normal
+> case for everything shipped here today.
 
-### The five steps
+### Adopt an existing object
 
-1. **Write the `resource`** to match what already exists on the controller.
-   Start from the commented example in [`main.tf`](../main.tf).
+1. **Write the Managed Resource** to match what already exists on the controller.
 2. **Find the live object's id** (the error-prone step — see below).
-3. **Add a matching `import {}` block** whose `to` is the resource address and
-   whose `id` is the live object id. Keep this block **permanently** — it is the
-   under-management proof the CI guard (`scripts/check-import-first.sh`) checks,
-   because a CLI `tofu import` leaves no trace in `*.tf`.
-4. **`tofu plan`** and confirm it reports **No changes**. If it shows changes,
-   the `resource` attributes don't match the live object yet — reconcile them
-   (see [troubleshooting](#a-plan-shows-changes-right-after-an-import)) before
-   going further. **Do not apply a plan that isn't a no-op.**
-5. **Only now edit attributes** to actually change the network, in a follow-up
-   commit, so the diff is purely your intended change.
+3. **Annotate it** `crossplane.io/external-name: <unifi-id>` so Crossplane binds to
+   the live object instead of creating a new one.
+4. **(Safest) observe first.** Set `spec.managementPolicies: ["Observe"]` and let it
+   reconcile; confirm `kubectl get -n unifi <kind> <name> -o yaml` shows
+   `Synced=True`, `Ready=True`, and a `.status.atProvider` that matches the live
+   object. **Only then** remove the policy (or set it back to `["*"]`) to manage it.
+5. **Only now edit fields** to actually change the network, in a follow-up commit, so
+   the diff is purely your intended change.
+
+### Create a new object
+
+Nothing to adopt → no `external-name` annotation. Write the Managed Resource and let
+Crossplane create it. Everything in this repo today (the WireGuard `Client`, its
+`TrafficRoute`, the admin DNS `Record`s) is new, so it is created on first reconcile.
 
 ### Finding the live object id
 
-The Terraform id of a UniFi object is the controller's internal `_id`. Two ways
-to get it, in order of reliability:
+The Crossplane external-name of a UniFi object is the controller's internal `_id`.
+Two ways to get it, in order of reliability:
 
 **A. Query the controller API (reliable, scriptable).** Use the same API key the
-reconciler uses, against the REST config endpoints. On a UniFi OS console
+provider uses, against the REST config endpoints. On a UniFi OS console
 (UDM/UDM-Pro/UCG) the Network application is proxied under `/proxy/network`:
 
 ```sh
-# Networks (VLANs): id is the "_id" field, name is "name"
+# Networks/VPN clients (the VPN client is a network): id is "_id", name is "name"
 curl -sk -H "X-API-KEY: $UNIFI_API_KEY" \
   "$UNIFI_API/proxy/network/api/s/default/rest/networkconf" | jq '.data[] | {name, _id}'
 
-# WLANs (SSIDs)
+# DNS records
 curl -sk -H "X-API-KEY: $UNIFI_API_KEY" \
-  "$UNIFI_API/proxy/network/api/s/default/rest/wlanconf" | jq '.data[] | {name, _id}'
+  "$UNIFI_API/proxy/network/api/s/default/rest/dnsrecord" | jq '.data[] | {key, _id}'
 ```
 
 On a standalone/legacy controller drop the `/proxy/network` prefix and use the
 `:8443` port: `https://<host>:8443/api/s/default/rest/networkconf`. Other config
-collections follow the same pattern: `firewallrule`, `portforward`,
-`portconf` (switch port profiles), `usergroup`. Swap `default` for your
-`unifi_site` if you manage a non-default site.
+collections follow the same pattern: `firewallrule`, `portforward`, `wlanconf`,
+`trafficroute`. Swap `default` for your site if you manage a non-default one.
 
-**B. Read it from the UI.** Open the object in the controller (Settings →
-Networks / WiFi), and the `_id` appears as the long hex string in the browser
-URL while editing it.
+**B. Read it from the UI.** Open the object in the controller and the `_id` appears
+as the long hex string in the browser URL while editing it.
 
-Whichever you use, **step 4's no-op plan is the real safety net** — an id typo
-surfaces there as an error or an unexpected diff, never as a silent live change.
+Whichever you use, **step 4's Observe reconcile is the real safety net** — an id typo
+surfaces there as a `Synced=False` error or a mismatched `.status.atProvider`, never
+as a silent live change.
 
-### Worked example — a VLAN network and its WLAN
+### Worked example — adopt an existing DNS record
 
-Say the controller already has an "IoT" VLAN (id `661f…a1`) and an "iot-ssid"
-WiFi (id `662a…b9`). Bring both under management:
+Say the controller already has an `A` record for `nas.lan` (id `661f…a1`). Bring it
+under management without changing it:
 
-```hcl
-# main.tf
-resource "unifi_network" "iot" {
-  name    = "IoT"
-  purpose = "corporate"
-
-  vlan_id      = 20
-  subnet       = "10.0.20.1/24"
-  dhcp_start   = "10.0.20.10"
-  dhcp_stop    = "10.0.20.250"
-  dhcp_enabled = true
-}
-
-import {
-  to = unifi_network.iot
-  id = "661f00000000000000000a1" # _id from /rest/networkconf
-}
-
-resource "unifi_wlan" "iot" {
-  name       = "iot-ssid"
-  security   = "wpapsk"
-  passphrase = var.iot_wlan_passphrase # secret via variable — never hard-code
-  network_id = unifi_network.iot.id
-}
-
-import {
-  to = unifi_wlan.iot
-  id = "662a00000000000000000b9" # _id from /rest/wlanconf
-}
+```yaml
+apiVersion: dns.unifi.m.crossplane.io/v1alpha1
+kind: Record
+metadata:
+  name: nas
+  annotations:
+    crossplane.io/external-name: "661f00000000000000000a1" # _id from /rest/dnsrecord
+spec:
+  managementPolicies: ["Observe"] # read-only until verified, then remove
+  forProvider:
+    name: nas.lan
+    recordType: A
+    value: 10.0.0.20
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
 ```
 
 ```sh
-tofu plan   # MUST say "No changes" (other than reading the secret into state)
+kubectl get -n unifi record.dns.unifi.m.crossplane.io nas -o yaml
+# want: Synced=True, Ready=True, .status.atProvider matching the live record
 ```
 
-A WLAN passphrase (or any secret) is supplied as a variable from the platform —
-declare the variable in `variables.tf` with `sensitive = true`; never commit the
-value. If the plan is clean, commit the `resource` + `import {}` pair and open a
-PR; the reconciler adopts the objects without touching them.
-
-### Genuinely new objects (the one escape hatch)
-
-If you are adding an object the network does **not** have yet (so there is
-nothing to import), put a reviewed marker on the line **directly above** the
-`resource` instead of an `import {}` block:
-
-```hcl
-# import-first:new brand-new guest VLAN, does not exist on the controller yet
-resource "unifi_network" "guest" {
-  # ...
-}
-```
-
-The guard accepts `# import-first:new <reason>` as the audited exception. Use it
-sparingly and only when the creation is intended — it is the one case where the
-first apply is *meant* to create live config.
+A secret value (a WireGuard key, a WLAN passphrase, …) is never inlined — reference a
+Secret produced by the platform's External Secrets (e.g. the VPN client's
+`privateKeySecretRef`). If Observe is clean, drop the policy, commit, and open a PR;
+the reconciler then manages the object without recreating it.
 
 ---
 
 ## Runbook B — service account & API-key rotation
 
-The reconciler authenticates to the controller with an **API key** (UniFi
-Controller **≥ 9.0.108**). Use a dedicated service account, never a personal
-admin login.
+The provider authenticates to the controller with an **API key** (UniFi Controller
+**≥ 9.0.108**). Use a dedicated service account, never a personal admin login.
 
 ### Create the service account + key
 
 1. In the controller UI, open **Settings → Admins & Users** (older UniFi OS:
    **Control Plane → Admins**) and **add a new admin** for automation, e.g.
-   `unifi-tofu`.
+   `unifi-crossplane`.
 2. Give it the **Limited Admin** role with **Local Access Only** — it needs only
-   network-configuration rights on this site, not full-console or remote/SSO
-   access. Scope it to the site this repo manages.
+   network-configuration rights on this site, not full-console or remote/SSO access.
 3. As that account, **create an API key** (UniFi OS ≥ 9: the admin's profile →
    **Create API Key**). Copy the key once — it is shown only at creation.
 4. Sanity-check it read-only before wiring it in:
@@ -157,79 +130,95 @@ admin login.
    # -> { "rc": "ok" }
    ```
 
-### Where the key lives (the secret flow)
+### Where the credentials live (the secret flow)
 
 The key is **not** stored in this repo. It is provisioned by the
-[platform](https://github.com/devantler-tech/platform), SOPS-encrypted:
+[platform](https://github.com/devantler-tech/platform), SOPS-encrypted, and surfaced
+to Crossplane as a `ProviderConfig` credentials Secret:
 
 ```
 controller (mint key)
    │  paste into the SOPS-encrypted value in platform `variables-cluster`
    ▼
 platform variables-cluster (SOPS)  ──►  seeded into OpenBao (PushSecret)
-   │  ExternalSecret in the `unifi` namespace
+   │  ExternalSecret in the `unifi` namespace renders the credentials JSON
    ▼
-tofu-controller Terraform CR  ──►  unifi_api_key variable  ──►  controller API
+Secret (unifi-controller-credentials)  ◄── ProviderConfig.spec.credentials.secretRef
+   │
+   ▼
+provider-upjet-unifi  ──►  controller API
 ```
 
-So onboarding the key is a **platform-side** change (edit the SOPS-encrypted
-`variables-cluster` entry), not a change here. This repo only declares the
-`unifi_api_key` variable (`sensitive = true`) and **must never** contain the
-value or a committed `*.tfvars`.
+The credentials Secret holds a JSON blob the provider forwards to the underlying
+SDK: `{"api_url": "...", "api_key": "...", "site": "default", "allow_insecure":
+"false"}`. The WireGuard `Client` additionally reads a `cluster-wireguard` Secret in
+the `unifi` namespace — the gateway's `private-key` (sensitive) and the Talos
+server's `peer-public-key` — also seeded from OpenBao. So onboarding credentials is a
+**platform-side** change (the `ProviderConfig`, the External Secrets, and the OpenBao
+seed live in the platform's `apps/unifi/`), not a change here. This repo only
+references them by name and **must never** contain a value.
 
 ### Rotate the key
 
-1. On the controller, **create a new API key** on the `unifi-tofu` account
+1. On the controller, **create a new API key** on the `unifi-crossplane` account
    (don't delete the old one yet).
 2. Update the SOPS-encrypted `unifi_api_key` value in the platform
    `variables-cluster` and let the platform re-seed OpenBao; the ExternalSecret
-   refreshes the in-cluster secret.
-3. Confirm a reconcile still **no-ops** (the `Terraform` CR plans clean, or run a
-   local `tofu plan` with the new key).
+   refreshes the in-cluster credentials Secret.
+3. Confirm the Managed Resources still reconcile clean (`Synced=True` / `Ready=True`,
+   no spurious diff).
 4. **Revoke the old key** on the controller.
 
 Rotate on a schedule and immediately if a key is ever exposed. Because the key is
-SOPS-encrypted and Local-Access-Only/Limited-Admin, blast radius is bounded to
-this site's network config.
+SOPS-encrypted and Local-Access-Only/Limited-Admin, blast radius is bounded to this
+site's network config.
 
 ---
 
 ## Troubleshooting
 
-Common reconcile failures (`Terraform` CR not ready, or a failing local
-`tofu plan`) and their root cause:
-
-### Auth fails (401 / "invalid API key") or a TLS handshake error
-The `unifi_api_key` is wrong, expired/revoked, or the account lacks rights — or
-the controller serves a **self-signed certificate**. Verify the key with the
-read-only `curl` above. For a self-signed cert (only then), set
-`unifi_allow_insecure = true` and justify it; prefer a valid TLS certificate.
-
-### `api_url` contains `/api`
-The provider/SDK **discovers** the API paths from the base URL, so a trailing
-`/api` double-paths into 404s or a failed discovery. `unifi_api_url` must be the
-bare base URL (e.g. `https://unifi.example.com`), never `…/api`.
-
-### `tofu import` says the object is not found / the wrong object imports
-The `id` isn't the live object's `_id`, or it's from the wrong site/collection.
-Re-query the correct REST endpoint (`networkconf` vs `wlanconf` vs
-`firewallrule` …) for the right site and copy the exact `_id`.
-
-### A plan shows changes right after an import
-The `resource` attributes don't match the live object. Inspect what actually
-imported and align the HCL to it:
+Common reconcile failures (a Managed Resource stuck `Synced=False` or `Ready=False`)
+and their root cause. Inspect with:
 
 ```sh
-tofu state show unifi_network.iot   # the real, imported values
+kubectl get -n unifi managed                       # all UniFi MRs + SYNCED/READY
+kubectl describe -n unifi client.vpn.unifi.m.crossplane.io cluster-wireguard
 ```
 
-Set the differing attributes explicitly (or remove ones you didn't mean to
-manage) until `tofu plan` is a clean no-op. **Never apply** a post-import plan
-that still shows changes — that is exactly the live-config mutation import-first
-exists to prevent.
+### Auth fails (401 / "invalid API key") or a TLS handshake error
+The `api_key` in the credentials Secret is wrong, expired/revoked, or the account
+lacks rights — or the controller serves a **self-signed certificate**. Verify the key
+with the read-only `curl` above. For a self-signed cert (only then), set
+`allow_insecure: "true"` in the platform's credentials JSON and justify it; prefer a
+valid TLS certificate.
 
-### CI "Import-First Guard" fails
-A `resource` was added without a matching `import {}` block **and** without an
-`# import-first:new <reason>` marker. Add the import block (preferred) or, for a
-genuinely new object, the reviewed marker. Run the guard locally before pushing:
-`./scripts/check-import-first.sh`.
+### `api_url` contains `/api`
+The provider/SDK **discovers** the API paths from the base URL, so a trailing `/api`
+double-paths into 404s. The credentials `api_url` must be the bare base URL (e.g.
+`https://unifi.example.com`), never `…/api`.
+
+### A `Client` is stuck without a handshake / the routes don't apply
+The `TrafficRoute.spec.forProvider.networkId` must be the VPN client's UniFi network
+id, which is only known **after** the `Client` first reconciles — read it from the
+`Client`'s `.status.atProvider.id` (or `/rest/networkconf`) and set it. The peer
+`ip` must be the reachable control-plane endpoint and `port` `51820`. (A
+cross-resource reference that wires this automatically is tracked upstream in
+`provider-upjet-unifi`.)
+
+### A reconcile wants to create an object that already exists (duplicate)
+The Managed Resource is missing its `crossplane.io/external-name` annotation, so
+Crossplane is trying to create rather than adopt. Add the annotation with the live
+object's `_id` (see [Runbook A](#finding-the-live-object-id)); for extra safety set
+`managementPolicies: ["Observe"]` first and verify `.status.atProvider`.
+
+### A Secret reference doesn't resolve
+`privateKeySecretRef` / `publicKeySecretRef` are **local** references — the Secret
+must exist in the **same namespace** (`unifi`) as the Managed Resource, with the
+referenced key. Confirm the platform's External Secret has materialised it:
+`kubectl get secret -n unifi cluster-wireguard -o jsonpath='{.data}'`.
+
+### The provider itself isn't healthy
+If every MR is `Synced=False`, check the provider package and config:
+`kubectl get providers,providerconfigs.unifi.m.crossplane.io -A` and the provider
+pod logs in `crossplane-system`. The `Provider` package + `ProviderConfig` are
+installed by the platform.
