@@ -136,7 +136,7 @@ The key is **not** stored in this repo. It is provisioned by the
 [platform](https://github.com/devantler-tech/platform), SOPS-encrypted, and surfaced
 to Crossplane as a `ProviderConfig` credentials Secret:
 
-```
+```text
 controller (mint key)
    │  paste into the SOPS-encrypted value in platform `variables-cluster`
    ▼
