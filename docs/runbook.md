@@ -132,16 +132,18 @@ The provider authenticates to the controller with an **API key** (UniFi Controll
 
 ### Where the credentials live (the secret flow)
 
-The key is **not** stored in this repo. It is provisioned by the
-[platform](https://github.com/devantler-tech/platform), SOPS-encrypted, and surfaced
-to Crossplane as a `ProviderConfig` credentials Secret:
+The key is **not** stored in this repo. It lives in
+[platform](https://github.com/devantler-tech/platform)'s **OpenBao** and is read
+into the cluster by an ExternalSecret that renders Crossplane's `ProviderConfig`
+credentials Secret:
 
 ```text
 controller (mint key)
-   │  paste into the SOPS-encrypted value in platform `variables-cluster`
+   │  write the real value IN PLACE (OpenBao UI/CLI)
    ▼
-platform variables-cluster (SOPS)  ──►  seeded into OpenBao (PushSecret)
-   │  ExternalSecret in the `unifi` namespace renders the credentials JSON
+OpenBao  secret/infrastructure/unifi/controller  { api_url, api_key }
+   │  platform `vault-config` Job seeds PLACEHOLDERS here on first run (only if absent)
+   │  ExternalSecret in the `unifi` namespace renders the credentials JSON (refresh 1h)
    ▼
 Secret (unifi-controller-credentials)  ◄── ProviderConfig.spec.credentials.secretRef
    │
@@ -149,8 +151,21 @@ Secret (unifi-controller-credentials)  ◄── ProviderConfig.spec.credentials
 provider-upjet-unifi  ──►  controller API
 ```
 
-The credentials Secret holds a JSON blob the provider forwards to the underlying
-SDK: `{"api_url": "...", "api_key": "...", "site": "default", "allow_insecure":
+The platform `vault-config` Job seeds **placeholder** values at
+`secret/infrastructure/unifi/controller`, but only when that path is absent — so a
+re-run never clobbers a real value (the same pattern as the GitHub App creds).
+Onboarding the key is therefore an **OpenBao** change — *not* a repo change:
+overwrite the placeholders in place via the OpenBao UI or CLI, e.g.
+
+```sh
+bao kv put -mount=secret infrastructure/unifi/controller \
+  api_url="https://unifi.example.com" \
+  api_key="…"   # base URL has NO /api suffix; Limited-Admin, Local-Access-Only key
+```
+
+The ExternalSecret refreshes within the hour (or force a sync) and renders the
+credentials Secret as the JSON blob the provider forwards to the underlying SDK:
+`{"api_url": "...", "api_key": "...", "site": "default", "allow_insecure":
 "false"}`. The WireGuard `Client` additionally reads a `cluster-wireguard` Secret in
 the `unifi` namespace — the gateway's `private-key` (sensitive) and the Talos
 server's `peer-public-key` — also seeded from OpenBao. So onboarding credentials is a
@@ -162,16 +177,17 @@ references them by name and **must never** contain a value.
 
 1. On the controller, **create a new API key** on the `unifi-crossplane` account
    (don't delete the old one yet).
-2. Update the SOPS-encrypted `unifi_api_key` value in the platform
-   `variables-cluster` and let the platform re-seed OpenBao; the ExternalSecret
-   refreshes the in-cluster credentials Secret.
+2. Overwrite the `api_key` at `secret/infrastructure/unifi/controller` in OpenBao
+   (UI/CLI, in place); the ExternalSecret refreshes the in-cluster credentials
+   Secret within the hour.
 3. Confirm the Managed Resources still reconcile clean (`Synced=True` / `Ready=True`,
    no spurious diff).
 4. **Revoke the old key** on the controller.
 
-Rotate on a schedule and immediately if a key is ever exposed. Because the key is
-SOPS-encrypted and Local-Access-Only/Limited-Admin, blast radius is bounded to this
-site's network config.
+Rotate on a schedule and immediately if a key is ever exposed. Because the key
+lives only in OpenBao (encrypted at rest, backed up via Raft snapshots) and is
+Local-Access-Only/Limited-Admin, blast radius is bounded to this site's network
+config.
 
 ---
 
