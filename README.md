@@ -1,72 +1,88 @@
 # unifi
 
 Declarative configuration for my [UniFi](https://www.ui.com/) network, managed as
-code with [OpenTofu](https://opentofu.org/)/Terraform and the
-[`filipowm/unifi`](https://github.com/filipowm/terraform-provider-unifi) provider.
+native Kubernetes resources with
+[Crossplane](https://www.crossplane.io/) and the
+[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
+provider.
 
-This repo is the **desired state** of the network (networks/VLANs, WLANs, firewall
-rules, port forwards, DNS records, …). It is reconciled **continuously** by
-[tofu-controller](https://flux-iac.github.io/tofu-controller/) on the
-[platform](https://github.com/devantler-tech/platform): a `Terraform` custom
-resource pulls this repo as a Flux `GitRepository`, runs `tofu plan`/`apply`
-against the controller API, and keeps state in a Kubernetes Secret. There is no
-`backend` block and no committed state — the cluster owns state.
+This repo is the **desired state** of the network (the WireGuard VPN client,
+traffic routes, local DNS records, …), expressed as Crossplane **Managed
+Resources** (`Client`, `TrafficRoute`, `Record`, …). It is reconciled
+**continuously** on the [platform](https://github.com/devantler-tech/platform): a
+Flux `Kustomization` pulls this repo as a `GitRepository` and applies the
+resources into the `unifi` namespace, and `provider-upjet-unifi` (installed as a
+Crossplane provider package) reconciles each one against the UniFi controller
+API. There is no Terraform and no separate state store — the Managed Resource
+*is* the state, with its observed status in `.status.atProvider`.
 
 ```
-this repo (OpenTofu, filipowm/unifi)
-   │ Flux GitRepository
+this repo (Crossplane MRs)
+   │ Flux GitRepository + Kustomization  →  namespace: unifi
    ▼
-Terraform CR (tofu-controller, namespace: unifi)  ──►  UniFi Controller API
+provider-upjet-unifi (Crossplane, crossplane-system)  ──►  UniFi Controller API
 ```
 
-## Golden rule: import-first
+## Golden rule: adopt-first
 
-Never let a first apply create or destroy live network config. To bring an
-existing object under management:
+Never let the first reconcile create or destroy live network config. A Managed
+Resource whose external object **already exists** must **adopt** it, not create a
+duplicate. To bring an existing object under management:
 
-1. Write the `resource` to match what already exists.
-2. Import it — e.g. `tofu import unifi_network.lan <id>` (or an `import {}` block).
-3. Run `tofu plan` and confirm **no changes**.
-4. Only then edit attributes to change the network.
+1. Write the Managed Resource to match what already exists on the controller.
+2. Add the annotation `crossplane.io/external-name: <unifi-id>` so Crossplane
+   binds to the live object instead of creating a new one.
+3. (Optional, safest) start it with `spec.managementPolicies: ["Observe"]` so the
+   first reconcile only *reads* the object; confirm `.status.atProvider` matches,
+   then widen to the default `["*"]` to manage it.
 
-An empty configuration (as shipped) plans to "No changes" — a safe no-op. For
-the step-by-step procedure (with worked examples and how to find a live object's
-id), see the [runbooks](docs/runbook.md).
+For a genuinely **new** object the network does not have yet (like everything
+shipped here today), no annotation is needed — Crossplane creates it. See the
+[runbook](docs/runbook.md) for the step-by-step procedure and how to find a live
+object's id.
 
 ## Authentication
 
 API-key auth (UniFi Controller ≥ 9.0.108). Use a dedicated service account with a
 **Limited Admin, Local Access Only** role. This repo is **public and holds no
-secrets**: the key lives in the platform's secret store (OpenBao) and is pulled
-into the reconciler by an External Secret — **never commit it here**.
+secrets**: the controller credentials live in the platform's secret store
+(OpenBao) and are surfaced to Crossplane as a `ProviderConfig` whose `secretRef`
+points at a Secret produced by an External Secret — **never commit them here**.
 
-| Variable | Meaning |
+| Credential | Meaning |
 | --- | --- |
-| `unifi_api_url` | Controller base URL, **without** the `/api` path |
-| `unifi_api_key` | API key (sensitive) |
-| `unifi_site` | Site to manage (default `default`) |
-| `unifi_allow_insecure` | Skip TLS verify — only for a self-signed cert |
+| `api_url` | Controller base URL, **without** the `/api` path |
+| `api_key` | API key (sensitive) |
+| `site` | Site to manage (default `default`) |
+| `allow_insecure` | Skip TLS verify — only for a self-signed cert |
 
-Creating the service account, minting the key, and rotating it are covered in
-the [service-account runbook](docs/runbook.md#runbook-b--service-account--api-key-rotation).
+The WireGuard VPN client additionally references two keys from a Secret in the
+`unifi` namespace (`cluster-wireguard`): the gateway's own **private key**
+(sensitive) and the Talos server's **public key**. Both are seeded by the
+platform; see the [runbook](docs/runbook.md#runbook-b--service-account--api-key-rotation).
 
-## Local use (read-only / planning)
+## Local use (validate / build)
 
 ```sh
-export UNIFI_API="https://unifi.example.com"   # provider env var for api_url
-export UNIFI_API_KEY="…"
-tofu init
-tofu plan      # should report no changes against the live controller
+kustomize build .                         # render the Managed Resources
+kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
 ```
 
-Never commit `*.tfvars`, `*.tfstate*`, or `.terraform/` (see `.gitignore`).
+CRD-schema validation against the provider's own CRDs (in
+[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
+under `package/crds/`) happens authoritatively server-side at apply time, and can
+be run locally by pointing `kubeconform` at those schemas. CI (`.github/workflows/ci.yaml`)
+runs `kustomize build` + `kubeconform` and aggregates them into the single
+required `CI - Required Checks` status.
 
 ## Roadmap
 
-tofu-controller + plain Terraform is the pragmatic interim. The steady-state goal
-is a real-CRD Crossplane provider (`provider-upjet-unifi`) so the network is
-managed as native Kubernetes resources — tracked in the
-[monorepo](https://github.com/devantler-tech/monorepo) issues.
+This repo *is* the steady-state Crossplane model (it replaced an interim
+OpenTofu + tofu-controller setup). Next steps are tracked in the
+[monorepo](https://github.com/devantler-tech/monorepo) issues — e.g. a
+cross-resource reference so a `TrafficRoute` can point at a `Client` by name
+instead of a post-create network id, and bringing more of the network
+(VLANs/WLANs/firewall) under management adopt-first.
 
 ## License
 

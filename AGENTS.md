@@ -6,49 +6,64 @@ code review reads, with `CLAUDE.md` shimming to this file. Keep them in sync.
 
 ## What this repo is
 
-The **declarative desired state of the home UniFi network**, written as plain
-OpenTofu/Terraform with the [`filipowm/unifi`](https://github.com/filipowm/terraform-provider-unifi)
-provider. It is a **platform tenant**: reconciled continuously by tofu-controller
-on [devantler-tech/platform](https://github.com/devantler-tech/platform) (a
-`Terraform` CR pulls this repo as a Flux `GitRepository` and applies it to the
-controller API; state lives in a Kubernetes Secret). See `README.md` for the
-architecture and [`docs/runbook.md`](docs/runbook.md) for the operational
-procedures (import-first onboarding with worked examples + finding object ids;
-service-account setup & API-key rotation; troubleshooting).
+The **declarative desired state of the home UniFi network**, written as Crossplane
+**Managed Resources** (`Client`, `TrafficRoute`, `Record`, … from the
+[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
+provider). It is a **platform tenant**: reconciled continuously on
+[devantler-tech/platform](https://github.com/devantler-tech/platform), where a Flux
+`Kustomization` pulls this repo as a `GitRepository` and applies the resources into
+the `unifi` namespace, and the Crossplane provider reconciles each one against the
+controller API. The Managed Resource *is* the state (observed status in
+`.status.atProvider`); there is no Terraform and no separate state store. See
+`README.md` for the architecture and [`docs/runbook.md`](docs/runbook.md) for the
+operational procedures (adopt-first onboarding with worked examples + finding object
+ids; service-account setup & API-key rotation; troubleshooting).
+
+## Layout
+
+- `kustomization.yaml` — lists the Managed Resource manifests (the platform's Flux
+  `Kustomization` applies the build into the `unifi` namespace).
+- `wireguard-vpn-client.yaml` — the WireGuard VPN `Client` + its `TrafficRoute`.
+- `admin-dns.yaml` — split-horizon admin-UI DNS `Record`s.
+- New concerns go in their own small, well-named file and are added to
+  `kustomization.yaml`.
 
 ## Non-negotiables
 
-- **Import-first.** Bring an existing object under management with `tofu import`
-  / an `import {}` block so its first `tofu plan` is a **no-op**; only then edit.
-  Never add a `resource` for an existing object without importing it. **Keep the
-  `import {}` block permanently** — it is the under-management proof the CI guard
-  (`scripts/check-import-first.sh`) checks, since state lives in-cluster and a CLI
-  import leaves no trace in `*.tf`. For a genuinely *new* object the network does
-  not have yet, put a reviewed `# import-first:new <reason>` comment on the line
-  directly above the `resource` (the one audited escape hatch).
-- **No backend block, no committed state.** tofu-controller owns state.
-  `*.tfstate*` and `.terraform/` are git-ignored.
-- **No committed secrets.** `unifi_api_key`, WLAN passphrases, RADIUS secrets etc.
-  arrive as variables from the platform; never hard-code them or commit `*.tfvars`.
-- **TLS.** `unifi_allow_insecure = true` only for a self-signed controller cert,
-  and justify it.
-- **`api_url` omits `/api`** (the SDK discovers paths).
+- **Adopt-first.** Bring an existing controller object under management by setting
+  `crossplane.io/external-name: <unifi-id>` on the Managed Resource (optionally
+  starting with `spec.managementPolicies: ["Observe"]` to read-only verify first),
+  so the first reconcile **adopts** the live object instead of creating a duplicate.
+  Never add a Managed Resource for an existing object without its external-name. A
+  genuinely *new* object (nothing to adopt) is created by Crossplane — that is the
+  normal case for what ships here today.
+- **Namespaced model.** Use the namespaced (`*.unifi.m.crossplane.io`) MR kinds and
+  the namespaced `ProviderConfig` named `default`; every resource lands in the
+  `unifi` namespace (the platform's `Kustomization` sets `targetNamespace`). Each MR
+  carries `providerConfigRef: { kind: ProviderConfig, name: default }`.
+- **No committed secrets.** The `api_key`, the gateway WireGuard private key, etc.
+  arrive as Kubernetes Secrets produced by the platform's External Secrets and are
+  referenced by name (`secretRef` / `*SecretRef` / `crossplane.io/external-name`);
+  never hard-code or commit them.
+- **TLS.** `allow_insecure: "true"` (on the platform's `ProviderConfig` credentials)
+  only for a self-signed controller cert, and justify it.
+- **`api_url` omits `/api`** (the provider/SDK discovers paths).
+- **Never hand-edit generated provider CRDs** — they live in `provider-upjet-unifi`
+  and are regenerated with Upjet there, not here.
 
 ## Validate before any PR (locally)
 
 ```sh
-tofu fmt -recursive
-tofu init -backend=false
-tofu validate
-./scripts/check-import-first.sh        # import-first golden-rule guard
-./scripts/check-import-first.test.sh   # the guard's own self-test
-tflint                                 # HCL hygiene (install: brew install tflint)
+kustomize build .                                            # render the MRs
+kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
 ```
 
-CI (`.github/workflows/ci.yaml`) re-runs all of the above on every PR — fmt-check
-+ init + validate, the import-first guard (+ its self-test), and `tflint` — and
-aggregates them into the single required `CI - Required Checks` status.
-Commit `.terraform.lock.hcl` to pin providers for reproducible reconciles.
+For full CRD-schema validation, point `kubeconform` at the provider's CRDs (from
+[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
+`package/crds/`) via `-schema-location`; the API server / Crossplane validate
+authoritatively at apply time. CI (`.github/workflows/ci.yaml`) re-runs
+`kustomize build` + `kubeconform` on every PR and aggregates them into the single
+required `CI - Required Checks` status.
 
 ## Maintenance (autonomous AI assistant)
 
@@ -70,15 +85,16 @@ PR; fix at the root cause; begin every PR/issue/comment with
 
 - **Triage** new issues/PRs (label; one insightful comment on the oldest
   un-commented item).
-- **Dependency hygiene:** curate Dependabot PRs; keep the `filipowm/unifi`
-  provider and pinned actions current; flag majors (provider majors can change
-  resource schemas — review the changelog and re-import if needed).
+- **Dependency hygiene:** curate Dependabot PRs; keep the pinned GitHub Actions and
+  the `provider-upjet-unifi` version (referenced by the platform's `Provider`
+  package) current; flag provider majors (they can change MR schemas — review the
+  changelog and re-check the manifests).
 - **CI/workflow health:** keep CI green and tidy (pin/align actions, fix
   broken/flaky steps); red on `main` is top priority.
-- **Config freshness:** the configuration `tofu validate`s on the current
-  OpenTofu; resources stay import-first and reflect the real network; docs
-  accurate.
+- **Config freshness:** the manifests `kustomize build` + `kubeconform` cleanly;
+  resources stay adopt-first and reflect the real network; docs accurate.
 - **Maintain your own PRs:** fix CI you caused, resolve conflicts.
 
-The steady-state roadmap is a real-CRD Crossplane provider
-(`provider-upjet-unifi`) replacing this interim — tracked in the monorepo issues.
+This repo is the steady-state Crossplane model; it replaced an interim OpenTofu +
+tofu-controller setup. Cross-resource references and broader network coverage are
+tracked in the monorepo issues.

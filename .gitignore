@@ -1,33 +1,6 @@
-# Local .terraform working directories
-.terraform/
-
-# State — tofu-controller manages state in-cluster; it must NEVER be committed
-*.tfstate
-*.tfstate.*
-*.tfstate.backup
-
-# Crash logs
-crash.log
-crash.*.log
-
-# Variable files that may carry secrets
-*.tfvars
-*.tfvars.json
-!example.tfvars
-
-# CLI config / override files
-.terraformrc
-terraform.rc
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# Saved plans
-*.tfplan
+# Local build output (e.g. `kustomize build . > manifests.yaml`)
+manifests.yaml
+/dist/
 
 # MegaLinter
 megalinter-reports/
-
-# NB: .terraform.lock.hcl is intentionally NOT ignored — commit it to pin
-# provider versions for reproducible reconciles.

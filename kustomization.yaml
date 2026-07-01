@@ -1,0 +1,9 @@
+# Desired state of the home UniFi network as Crossplane Managed Resources,
+# reconciled continuously by provider-upjet-unifi on the platform (see README.md).
+# The platform's Flux Kustomization applies these into the `unifi` namespace,
+# where the ProviderConfig `default` and the referenced Secrets live.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - wireguard-vpn-client.yaml
+  - admin-dns.yaml

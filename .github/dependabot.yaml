@@ -1,14 +1,6 @@
 version: 2
 
 updates:
-  - package-ecosystem: terraform
-    directory: /
-    schedule:
-      interval: daily
-    cooldown:
-      default-days: 7
-      semver-major-days: 14
-
   - package-ecosystem: github-actions
     directory: /
     schedule:

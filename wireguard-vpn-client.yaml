@@ -1,0 +1,71 @@
+# WireGuard VPN client — the home UniFi gateway dials the cluster's Talos
+# WireGuard server. Home initiates, so the dynamic residential IP never has to
+# be reachable (no DDNS). Reconciled by Crossplane (provider-upjet-unifi)
+# against the UniFi controller API.
+#
+# New object: the gateway has no WireGuard VPN client yet, so Crossplane creates
+# it. To ADOPT an object that already exists in the controller instead, set the
+# `crossplane.io/external-name` annotation to its UniFi id first — see
+# docs/runbook.md (the Crossplane equivalent of the old import-first rule).
+apiVersion: vpn.unifi.m.crossplane.io/v1alpha1
+kind: Client
+metadata:
+  name: cluster-wireguard
+spec:
+  forProvider:
+    name: cluster-wireguard
+    # The gateway's own address on the tunnel, in CIDR. defaultRoute stays false
+    # so only the routed subnets (see the TrafficRoute below) egress over the VPN.
+    subnet: 10.200.0.2/32
+    defaultRoute: false
+    pullDns: false
+    wireguard:
+      interface: wan
+      dnsServers:
+        - 1.1.1.1
+      peer:
+        # TODO(platform WG server): the real control-plane public IP, once the
+        # Talos WireGuard server is provisioned (WS3). Non-secret.
+        ip: REPLACE_WITH_CONTROL_PLANE_PUBLIC_IP
+        port: 51820
+        # The Talos server's public key. Not secret, but the provider schema
+        # only accepts a Secret reference. Seeded by the platform alongside the
+        # gateway private key (same Secret, in this namespace).
+        publicKeySecretRef:
+          name: cluster-wireguard
+          key: peer-public-key
+      # The gateway's own WireGuard private key (sensitive). Seeded by the
+      # platform from OpenBao via an ExternalSecret; never committed here.
+      privateKeySecretRef:
+        name: cluster-wireguard
+        key: private-key
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+# Route the cluster subnets through the tunnel. The client keeps defaultRoute
+# false, so only these destinations egress over the VPN; everything else takes
+# the normal WAN.
+#
+# New object: no such traffic route exists yet.
+apiVersion: route.unifi.m.crossplane.io/v1alpha1
+kind: TrafficRoute
+metadata:
+  name: cluster-wireguard-routes
+spec:
+  forProvider:
+    description: Cluster subnets via the WireGuard tunnel
+    enabled: true
+    # TODO(platform WG server): the VPN client's UniFi network id. It is known
+    # only after the Client above first reconciles (its .status.atProvider.id),
+    # so it is filled in at WS3. provider-upjet-unifi has no cross-resource
+    # reference for this field yet — tracked as an upstream enhancement.
+    networkId: REPLACE_WITH_VPN_CLIENT_NETWORK_ID
+    destination:
+      ip:
+        - address: 10.200.0.0/24 # WireGuard subnet
+        - address: 10.0.0.0/16 # Hetzner nodes
+        - address: 10.244.0.0/16 # pods
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
