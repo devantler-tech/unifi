@@ -4,6 +4,18 @@
 # where the ProviderConfig `default` and the referenced Secrets live.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# PAUSED until the platform WireGuard server (WS3) lands. Every resource here still
+# carries WS3 placeholders — the WireGuard Client's peer endpoint IP + keys, the
+# TrafficRoute's VPN-client network id, and the admin DNS records' gateway VIP
+# (10.200.0.10, which does not exist yet). Applying them now would fail the
+# Client/TrafficRoute on their placeholders AND create local DNS records that point
+# the admin hostnames at a dead VIP — breaking LAN access to those UIs. So we hold
+# every resource with `crossplane.io/paused`: once the provider is reachable it
+# connects and can manage the controller, but touches nothing here until WS3 fills
+# the real values. Unpause by removing this annotation — per-resource as each WS3
+# dependency lands, or all at once when WS3 is complete.
+commonAnnotations:
+  crossplane.io/paused: "true"
 resources:
   - wireguard-vpn-client.yaml
   - admin-dns.yaml
