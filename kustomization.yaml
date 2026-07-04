@@ -14,6 +14,11 @@ kind: Kustomization
 # connects and can manage the controller, but touches nothing here until WS3 fills
 # the real values. Unpause by removing this annotation — per-resource as each WS3
 # dependency lands, or all at once when WS3 is complete.
+#
+# NOTE: `commonAnnotations` pauses EVERY resource in this kustomization — that is
+# deliberate, since this file's whole resource set is WS3-gated. Do not add a
+# resource here that must reconcile before WS3 lands; it would inherit the pause
+# silently (put it in its own kustomization instead).
 commonAnnotations:
   crossplane.io/paused: "true"
 resources:
