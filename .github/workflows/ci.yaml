@@ -50,6 +50,6 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: 📊 Require all CI checks to pass
-        uses: devantler-tech/actions/aggregate-job-checks@b69839ba2debe04a46321b7698b6daf57667d4e7 # v9.0.2
+        uses: devantler-tech/actions/aggregate-job-checks@8835de82ebb5450c332e963bd9ffb4a6286bdd29 # v9.0.6
         with:
           job-results: ${{ needs.validate.result }}
