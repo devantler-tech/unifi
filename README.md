@@ -32,9 +32,12 @@ duplicate. To bring an existing object under management:
 1. Write the Managed Resource to match what already exists on the controller.
 2. Add the annotation `crossplane.io/external-name: <unifi-id>` so Crossplane
    binds to the live object instead of creating a new one.
-3. (Optional, safest) start it with `spec.managementPolicies: ["Observe"]` so the
-   first reconcile only *reads* the object; confirm `.status.atProvider` matches,
-   then widen to the default `["*"]` to manage it.
+3. (Optional, safest) start it read-only: annotate it
+   `platform.devantler.tech/unifi-management: observe-only` **and** set
+   `spec.managementPolicies: ["Observe"]`, so the first reconcile only *reads* the
+   object; confirm `.status.atProvider` matches, then remove both to manage it. The
+   Platform honours the annotation and replaces any declared `managementPolicies`, so
+   the annotation is what keeps it read-only.
 
 For a genuinely **new** object the network does not have yet (like everything
 shipped here today), no annotation is needed — Crossplane creates it. See the

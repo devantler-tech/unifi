@@ -27,12 +27,29 @@ is the repo's central safety property.
 2. **Find the live object's id** (the error-prone step — see below).
 3. **Annotate it** `crossplane.io/external-name: <unifi-id>` so Crossplane binds to
    the live object instead of creating a new one.
-4. **(Safest) observe first.** Set `spec.managementPolicies: ["Observe"]` and let it
-   reconcile; confirm `kubectl get -n unifi <kind> <name> -o yaml` shows
-   `Synced=True`, `Ready=True`, and a `.status.atProvider` that matches the live
-   object. **Only then** remove the policy (or set it back to `["*"]`) to manage it.
+4. **(Safest) observe first.** Annotate it
+   `platform.devantler.tech/unifi-management: observe-only` **and** set
+   `spec.managementPolicies: ["Observe"]`, and let it reconcile; confirm
+   `kubectl get -n unifi <kind> <name> -o yaml` shows `Synced=True`, `Ready=True`,
+   and a `.status.atProvider` that matches the live object. **Only then** remove both
+   to manage it. The annotation is what the Platform honours: it replaces any
+   `managementPolicies` declared here on every Managed Resource (it never grants
+   `Delete`; see [Retire an object](#retire-an-object)), so `["Observe"]` without
+   the annotation is widened. Put the annotation on the resource itself, never in
+   `commonAnnotations` or a transformer: those land after the Platform's patches,
+   and the Platform refuses the result at admission.
 5. **Only now edit fields** to actually change the network, in a follow-up commit, so
    the diff is purely your intended change.
+
+### Retire an object
+
+Removing a Managed Resource from this repository never deletes the live UniFi object:
+the Platform applies every Managed Resource without the `Delete` management policy, so
+a removal (accidental or not) deletes at most the Kubernetes object and leaves the
+network config in place, unmanaged. The Platform also enforces this at admission: a
+Managed Resource that still carries `Delete` (or `*`) cannot be applied or pruned from
+here. To really remove it, delete it in the controller
+after its Managed Resource is gone from this repository.
 
 ### Create a new object
 
@@ -83,8 +100,9 @@ metadata:
   name: nas
   annotations:
     crossplane.io/external-name: "661f00000000000000000a1" # _id from /rest/dnsrecord
+    platform.devantler.tech/unifi-management: observe-only # read-only until verified, then remove
 spec:
-  managementPolicies: ["Observe"] # read-only until verified, then remove
+  managementPolicies: ["Observe"] # remove together with the annotation
   forProvider:
     name: nas.lan
     recordType: A
@@ -101,8 +119,8 @@ kubectl get -n unifi record.dns.unifi.m.crossplane.io nas -o yaml
 
 A secret value (a WireGuard key, a WLAN passphrase, …) is never inlined — reference a
 Secret produced by the platform's External Secrets (e.g. the VPN client's
-`privateKeySecretRef`). If Observe is clean, drop the policy, commit, and open a PR;
-the reconciler then manages the object without recreating it.
+`privateKeySecretRef`). If Observe is clean, drop the annotation and the policy,
+commit, and open a PR; the reconciler then manages the object without recreating it.
 
 ---
 
@@ -224,8 +242,10 @@ cross-resource reference that wires this automatically is tracked upstream in
 ### A reconcile wants to create an object that already exists (duplicate)
 The Managed Resource is missing its `crossplane.io/external-name` annotation, so
 Crossplane is trying to create rather than adopt. Add the annotation with the live
-object's `_id` (see [Runbook A](#finding-the-live-object-id)); for extra safety set
-`managementPolicies: ["Observe"]` first and verify `.status.atProvider`.
+object's `_id` (see [Runbook A](#finding-the-live-object-id)); for extra safety start it
+read-only (the `platform.devantler.tech/unifi-management: observe-only` annotation plus
+`managementPolicies: ["Observe"]`) and verify `.status.atProvider`, then remove both so
+Crossplane manages it.
 
 ### A Secret reference doesn't resolve
 `privateKeySecretRef` / `publicKeySecretRef` are **local** references — the Secret
