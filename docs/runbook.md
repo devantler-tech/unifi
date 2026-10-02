@@ -35,8 +35,9 @@ is the repo's central safety property.
    to manage it. The annotation is what the Platform honours: it replaces any
    `managementPolicies` declared here on every Managed Resource (it never grants
    `Delete`; see [Retire an object](#retire-an-object)), so `["Observe"]` without
-   the annotation is widened.
-5. **Only now edit fields** to actually change the network, in a follow-up commit, so
+   the annotation is widened. Put the annotation on the resource itself, never in
+   `commonAnnotations` or a transformer: those land after the Platform's patches,
+   and the Platform refuses the result at admission.5. **Only now edit fields** to actually change the network, in a follow-up commit, so
    the diff is purely your intended change.
 
 ### Retire an object
@@ -44,7 +45,9 @@ is the repo's central safety property.
 Removing a Managed Resource from this repository never deletes the live UniFi object:
 the Platform applies every Managed Resource without the `Delete` management policy, so
 a removal (accidental or not) deletes at most the Kubernetes object and leaves the
-network config in place, unmanaged. To really remove it, delete it in the controller
+network config in place, unmanaged. The Platform also enforces this at admission: a
+Managed Resource that still carries `Delete` (or `*`) cannot be applied or pruned from
+here. To really remove it, delete it in the controller
 after its Managed Resource is gone from this repository.
 
 ### Create a new object
