@@ -244,7 +244,8 @@ The Managed Resource is missing its `crossplane.io/external-name` annotation, so
 Crossplane is trying to create rather than adopt. Add the annotation with the live
 object's `_id` (see [Runbook A](#finding-the-live-object-id)); for extra safety start it
 read-only (the `platform.devantler.tech/unifi-management: observe-only` annotation plus
-`managementPolicies: ["Observe"]`) and verify `.status.atProvider`.
+`managementPolicies: ["Observe"]`) and verify `.status.atProvider`, then remove both so
+Crossplane manages it.
 
 ### A Secret reference doesn't resolve
 `privateKeySecretRef` / `publicKeySecretRef` are **local** references — the Secret
