@@ -37,7 +37,8 @@ is the repo's central safety property.
    `Delete`; see [Retire an object](#retire-an-object)), so `["Observe"]` without
    the annotation is widened. Put the annotation on the resource itself, never in
    `commonAnnotations` or a transformer: those land after the Platform's patches,
-   and the Platform refuses the result at admission.5. **Only now edit fields** to actually change the network, in a follow-up commit, so
+   and the Platform refuses the result at admission.
+5. **Only now edit fields** to actually change the network, in a follow-up commit, so
    the diff is purely your intended change.
 
 ### Retire an object
