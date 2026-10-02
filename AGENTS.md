@@ -32,7 +32,9 @@ ids; service-account setup & API-key rotation; troubleshooting).
 
 - **Adopt-first.** Bring an existing controller object under management by setting
   `crossplane.io/external-name: <unifi-id>` on the Managed Resource (optionally
-  starting with `spec.managementPolicies: ["Observe"]` to read-only verify first),
+  starting read-only, with the `platform.devantler.tech/unifi-management: observe-only`
+  annotation plus `spec.managementPolicies: ["Observe"]`, to verify first; the Platform
+  honours the annotation and replaces any declared `managementPolicies`),
   so the first reconcile **adopts** the live object instead of creating a duplicate.
   Never add a Managed Resource for an existing object without its external-name. A
   genuinely *new* object (nothing to adopt) is created by Crossplane — that is the
