@@ -68,6 +68,11 @@ authoritatively at apply time. CI (`.github/workflows/ci.yaml`) re-runs
 `kustomize build` + `kubeconform` on every PR and aggregates them into the single
 required `CI - Required Checks` status.
 
+Required CI also scans README and AGENTS for links to configured retired repositories.
+The immutable-pinned validator uses `.github/retired-repo-links.json`; its offline
+regression is `bash scripts/test-retired-repo-links.sh <released-validator-binary>`.
+Clean content passes; seeded defects in both files and missing configuration fail.
+
 ## Maintenance (autonomous AI assistant)
 
 These conventions guide the autonomous **Agentic Engineer** — and any agentic
