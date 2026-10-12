@@ -6,22 +6,77 @@ native Kubernetes resources with
 [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
 provider.
 
-This repo is the **desired state** of the network (the WireGuard VPN client,
-traffic routes, local DNS records, …), expressed as Crossplane **Managed
-Resources** (`Client`, `TrafficRoute`, `Record`, …). It is reconciled
-**continuously** on the [platform](https://github.com/devantler-tech/platform): a
-Flux `Kustomization` pulls this repo as a `GitRepository` and applies the
-resources into the `unifi` namespace, and `provider-upjet-unifi` (installed as a
-Crossplane provider package) reconciles each one against the UniFi controller
-API. There is no Terraform and no separate state store — the Managed Resource
-*is* the state, with its observed status in `.status.atProvider`.
+This is one home network's desired-state configuration, not a general-purpose UniFi
+tool. Start with a local render; changing the live network requires the separately
+managed [platform](https://github.com/devantler-tech/platform) and authorized
+controller access.
+
+## Render locally
+
+You need Git and `kubectl` with its built-in Kustomize command. No UniFi controller,
+credentials or running cluster are needed for this check. From a directory where you
+want a source checkout:
+
+```sh
+git clone https://github.com/devantler-tech/unifi.git
+cd unifi
+kubectl kustomize .
+```
+
+Success is a zero exit status and nine rendered resources: one `Client`, one
+`TrafficRoute` and seven `Record`s, each carrying the annotation
+`crossplane.io/paused: "true"`. The render builds the checked-in manifest set. It does
+not apply anything, contact the controller or prove that the live network matches.
+
+If you have [`kubeconform`](https://github.com/yannh/kubeconform) installed, you can
+also run the structural check CI runs:
+
+```sh
+kubectl kustomize . | kubeconform -strict -ignore-missing-schemas -summary
+```
+
+Expect `Valid: 0, Invalid: 0, Errors: 0, Skipped: 9`. All nine resources are skipped
+because their kinds are custom resources whose schemas `kubeconform` does not have, so
+this check catches malformed YAML and nothing more. The fields are validated against
+the provider's schemas (in
+[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
+under `package/crds/`) only when the resources are applied on the platform.
+
+## Current state: everything here is paused
+
+Every resource in this repository is held with `crossplane.io/paused: "true"`, set
+once in [`kustomization.yaml`](kustomization.yaml). While a resource is paused,
+Crossplane does not create, change or delete anything on the controller for it.
+
+The pause is deliberate. The resources still contain placeholders (the VPN peer
+address, the VPN network id and the internal address the admin DNS records point at)
+that can be filled in only once the platform's WireGuard server exists. Applying them
+earlier would fail the VPN client and point the admin hostnames at an address that
+does not answer. The comment in `kustomization.yaml` records when the pause may be
+lifted. Removing the annotation is a reviewed change to the live network, never a
+documentation or onboarding step.
+
+## How it works
+
+This repository is the **desired state** of the network (the WireGuard VPN client,
+traffic routes, local DNS records, …), expressed as Crossplane **Managed Resources**
+(`Client`, `TrafficRoute`, `Record`, …). There is no Terraform and no separate state
+store: the Managed Resource *is* the state, with its observed status in
+`.status.atProvider`.
 
 ```
 this repo (Crossplane MRs)
-   │ Flux GitRepository + Kustomization  →  namespace: unifi
+   │ Flux GitRepository (one pinned, signed commit) + Kustomization  →  namespace: unifi
    ▼
 provider-upjet-unifi (Crossplane, crossplane-system)  ──►  UniFi Controller API
 ```
+
+The [platform](https://github.com/devantler-tech/platform) reads this repository at
+**one commit it pins** and verifies that commit's signature before applying the
+resources into the `unifi` namespace. There `provider-upjet-unifi` reconciles each
+resource that is not paused against the UniFi controller API. A merge here therefore
+changes nothing on the platform by itself: the pinned commit is moved in a separately
+reviewed platform change.
 
 ## Golden rule: adopt-first
 
@@ -64,19 +119,12 @@ The WireGuard VPN client additionally references two keys from a Secret in the
 (sensitive) and the Talos server's **public key**. Both are seeded by the
 platform; see the [runbook](docs/runbook.md#runbook-b--service-account--api-key-rotation).
 
-## Local use (validate / build)
+## Contributing
 
-```sh
-kustomize build .                         # render the Managed Resources
-kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
-```
-
-CRD-schema validation against the provider's own CRDs (in
-[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
-under `package/crds/`) happens authoritatively server-side at apply time, and can
-be run locally by pointing `kubeconform` at those schemas. CI (`.github/workflows/ci.yaml`)
-runs `kustomize build` + `kubeconform` and aggregates them into the single
-required `CI - Required Checks` status.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for a safe first change, the local checks
+and how to submit. The [CI workflow](.github/workflows/ci.yaml) renders the manifests,
+runs the structural check above and scans the documentation for links to retired
+repositories; passing it is not validation against the live network.
 
 ## Roadmap
 

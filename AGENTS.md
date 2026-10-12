@@ -9,13 +9,17 @@ code review reads, with `CLAUDE.md` shimming to this file. Keep them in sync.
 The **declarative desired state of the home UniFi network**, written as Crossplane
 **Managed Resources** (`Client`, `TrafficRoute`, `Record`, … from the
 [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
-provider). It is a **platform tenant**: reconciled continuously on
+provider). It is a **platform tenant**: reconciled on
 [devantler-tech/platform](https://github.com/devantler-tech/platform), where a Flux
-`Kustomization` pulls this repo as a `GitRepository` and applies the resources into
-the `unifi` namespace, and the Crossplane provider reconciles each one against the
-controller API. The Managed Resource *is* the state (observed status in
+`GitRepository` reads this repo at **one pinned, signature-verified commit** and a
+`Kustomization` applies the resources into the `unifi` namespace, and the Crossplane
+provider reconciles each one against the controller API. A merge here changes nothing
+live until that pin is moved in a reviewed Platform change. **Every resource is
+currently paused** (`crossplane.io/paused` in `kustomization.yaml`); never remove the
+pause as part of another change. The Managed Resource *is* the state (observed status in
 `.status.atProvider`); there is no Terraform and no separate state store. See
-`README.md` for the architecture and [`docs/runbook.md`](docs/runbook.md) for the
+`README.md` for the architecture, [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
+contributor path, and [`docs/runbook.md`](docs/runbook.md) for the
 operational procedures (adopt-first onboarding with worked examples + finding object
 ids; service-account setup & API-key rotation; troubleshooting).
 
@@ -61,7 +65,9 @@ kustomize build .                                            # render the MRs
 kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
 ```
 
-For full CRD-schema validation, point `kubeconform` at the provider's CRDs (from
+`kubectl kustomize .` is the same render without a separate `kustomize` install. With
+`-ignore-missing-schemas` every resource here is **skipped** (`Skipped: 9`), so a
+passing run proves the YAML is well-formed and nothing about the fields. For full CRD-schema validation, point `kubeconform` at the provider's CRDs (from
 [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
 `package/crds/`) via `-schema-location`; the API server / Crossplane validate
 authoritatively at apply time. CI (`.github/workflows/ci.yaml`) re-runs
