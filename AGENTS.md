@@ -66,13 +66,21 @@ kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
 ```
 
 `kubectl kustomize .` is the same render without a separate `kustomize` install. With
-`-ignore-missing-schemas` every resource here is **skipped** (`Skipped: 9`), so a
-passing run proves the YAML is well-formed and nothing about the fields. For full CRD-schema validation, point `kubeconform` at the provider's CRDs (from
-[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
-`package/crds/`) via `-schema-location`; the API server / Crossplane validate
-authoritatively at apply time. CI (`.github/workflows/ci.yaml`) re-runs
-`kustomize build` + `kubeconform` on every PR and aggregates them into the single
-required `CI - Required Checks` status.
+`-ignore-missing-schemas` every resource here is **skipped** (`Skipped: 9`), so that step
+proves the YAML is well-formed and nothing about the fields.
+
+Field validation is `scripts/validate-crd-schemas.sh <rendered-manifests.yaml>`. It fetches
+the provider's CRDs from [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
+at `PROVIDER_REF`, closes each object schema so an unknown field is an error, and runs
+`kubeconform -strict` with no skip, so a kind without a pinned schema fails too. It needs
+network access, plus `kubeconform`, `yq` (v4) and `jq`. `scripts/test-validate-crd-schemas.sh`
+seeds the defects the check must catch. CI re-runs all of it on every PR and aggregates the
+results into the single required `CI - Required Checks` status.
+
+**Pin sync.** `PROVIDER_REF` must equal the release the Platform's `Provider` package pins.
+Nothing checks the two automatically. Land the matching `PROVIDER_REF` change here before the
+Platform's provider bump merges, so the check never runs against an older schema than the one
+the Platform applies.
 
 Required CI also scans README and AGENTS for links to configured retired repositories.
 The immutable-pinned validator uses `.github/retired-repo-links.json`; its offline

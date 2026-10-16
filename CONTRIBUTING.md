@@ -32,8 +32,9 @@ Both commands must exit successfully and print nothing. The render validates the
 Kustomize build only. It does not check the resources against the provider's schemas,
 reach the controller or prove anything about the live network.
 
-[CI](.github/workflows/ci.yaml) repeats the render, runs `kubeconform` on it and scans
-`README.md` and `AGENTS.md` for links to retired repositories. The optional
+[CI](.github/workflows/ci.yaml) repeats the render, runs `kubeconform` on it, checks every
+field against the provider's CRD schema, and scans `README.md` and `AGENTS.md` for links to
+retired repositories. The optional
 `kubeconform` command and what its result means are in the
 [README](README.md#render-locally). CI builds the link scanner from a released
 revision, so you do not need to run it locally for a first change.

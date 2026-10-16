@@ -122,6 +122,15 @@ jobs:
         # provider CRDs — see AGENTS.md), so skip their missing client schemas here.
         run: kubeconform -strict -ignore-missing-schemas -summary -verbose manifests.yaml
 
+      - name: Validate fields against the provider CRD schema
+        # The step above skips every UniFi kind, because the public catalogue has no
+        # schema for them. This step checks each field against the provider release
+        # the Platform pins (see scripts/validate-crd-schemas.sh and AGENTS.md).
+        run: bash scripts/validate-crd-schemas.sh manifests.yaml
+
+      - name: Check the field validation catches seeded defects
+        run: bash scripts/test-validate-crd-schemas.sh manifests.yaml
+
   ci-required-checks:
     name: CI - Required Checks
     runs-on: ubuntu-latest
