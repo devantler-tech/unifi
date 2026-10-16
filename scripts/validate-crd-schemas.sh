@@ -52,10 +52,13 @@ for crd in "${CRDS[@]}"; do
   kind="$(yq e '.spec.names.kind' "${work}/${crd}")"
   mkdir -p "${schemas}/${group}"
 
-  # kubeconform looks up <group>/<Kind>_<version>.json for each served version.
+  # kubeconform looks up <group>/<kind>_<version>.json, with the kind lowercased, for each
+  # served version. The lookup is case-sensitive on Linux runners but not on macOS, so the
+  # file name must be lowercase to pass on both.
+  kind_lower="$(printf '%s' "${kind}" | tr '[:upper:]' '[:lower:]')"
   served=0
   while IFS= read -r version; do
-    out="${schemas}/${group}/${kind}_${version}.json"
+    out="${schemas}/${group}/${kind_lower}_${version}.json"
     yq -o=json ".spec.versions[] | select(.name == \"${version}\") | .schema.openAPIV3Schema" "${work}/${crd}" \
       | jq 'walk(if type == "object" and has("properties") and (has("additionalProperties") | not) and (.["x-kubernetes-preserve-unknown-fields"] != true) then . + {additionalProperties: false} else . end)' \
       > "${out}"
