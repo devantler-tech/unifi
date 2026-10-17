@@ -172,6 +172,22 @@ provider "${work}/provider-once.yaml" "${package}"
 { cat "${work}/provider-once.yaml"; printf -- '---\n'; cat "${work}/provider-once.yaml"; } > "${work}/provider-twice.yaml"
 expect_unknown "two Provider documents are unknown" "is not ghcr.io/devantler-tech/provider-upjet-unifi" "${work}/provider-twice.yaml"
 
+# 17. The validator uses the release the Provider manifest names, checked against a version this
+# test states itself. Scenarios 7–16 build on the release scenario 1 reported, so on their own they
+# would still pass if the validator picked the wrong release. v1.0.5 is a published, immutable tag
+# whose CRDs accept the current manifests.
+known_release="v1.0.5"
+provider "${work}/provider-known.yaml" "ghcr.io/devantler-tech/provider-upjet-unifi:${known_release}"
+got="$(run_with_provider "${work}/provider-known.yaml" "${manifests}")"
+if [ "${got}" = "0" ] \
+  && grep -qx "validate-crd-schemas: validating against devantler-tech/provider-upjet-unifi ${known_release}, the release the Platform runs" "${work}/last.log"; then
+  echo "ok   the validator uses the release the Provider manifest names (exit 0, ${known_release})"
+else
+  echo "FAIL the validator must validate against ${known_release}, the release the Provider manifest names: got exit ${got}" >&2
+  cat "${work}/last.log" >&2
+  failures=$((failures + 1))
+fi
+
 if [ "${failures}" -gt 0 ]; then
   echo "test-validate-crd-schemas: ${failures} scenario(s) failed" >&2
   exit 1
