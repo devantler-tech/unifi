@@ -127,6 +127,9 @@ fi
 
 expect_unknown "unreadable Platform manifest is unknown" "could not read the Platform's Provider manifest" "${work}/provider-missing.yaml"
 
+yq e 'del(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package)' "${live}" > "${work}/provider-no-package.yaml"
+expect_unknown "a Provider without a package is unknown" "got 'null'" "${work}/provider-no-package.yaml"
+
 yq e '(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package) = "ghcr.io/devantler-tech/provider-upjet-unifi:latest"' "${live}" > "${work}/provider-latest.yaml"
 expect_unknown "a non-release tag is unknown" "got 'ghcr.io/devantler-tech/provider-upjet-unifi:latest'" "${work}/provider-latest.yaml"
 
