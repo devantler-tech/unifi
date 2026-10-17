@@ -71,16 +71,18 @@ proves the YAML is well-formed and nothing about the fields.
 
 Field validation is `scripts/validate-crd-schemas.sh <rendered-manifests.yaml>`. It fetches
 the provider's CRDs from [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
-at `PROVIDER_REF`, closes each object schema so an unknown field is an error, and runs
-`kubeconform -strict` with no skip, so a kind without a pinned schema fails too. It needs
-network access, plus `kubeconform`, `yq` (v4) and `jq`. `scripts/test-validate-crd-schemas.sh`
-seeds the defects the check must catch. CI re-runs all of it on every PR and aggregates the
-results into the single required `CI - Required Checks` status.
+at the release the Platform runs, closes each object schema so an unknown field is an error,
+and runs `kubeconform -strict` with no skip, so a kind without a pinned schema fails too. It
+needs network access, plus `curl`, `kubeconform`, `yq` (v4) and `jq`.
+`scripts/test-validate-crd-schemas.sh` seeds the defects the check must catch. CI re-runs all
+of it on every PR and aggregates the results into the single required `CI - Required Checks`
+status.
 
-**Pin sync.** `PROVIDER_REF` must equal the release the Platform's `Provider` package pins.
-Nothing checks the two automatically. Land the matching `PROVIDER_REF` change here before the
-Platform's provider bump merges, so the check never runs against an older schema than the one
-the Platform applies.
+**Provider version.** The check reads the release from the Platform's `Provider` package
+manifest on the Platform's `main` branch, so there is no second version to keep in step here:
+when Renovate moves the Platform to a new provider release, the next run here validates against
+it. A manifest that cannot be read, or that does not name one `vX.Y.Z` release of
+`ghcr.io/devantler-tech/provider-upjet-unifi`, fails the check (exit 2), never passes it.
 
 Required CI also scans README and AGENTS for links to configured retired repositories.
 The immutable-pinned validator uses `.github/retired-repo-links.json`; its offline

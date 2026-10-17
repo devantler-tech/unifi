@@ -6,21 +6,25 @@
 # that the YAML is well formed. A misspelled field would then reach the Platform
 # and could be pruned on apply without an error.
 #
-# The schemas are the provider's own CRDs at PROVIDER_REF, fetched at that tag
-# and never vendored. Their object schemas are closed (no unknown fields), so a
-# field the CRD does not define is an error.
+# The schemas are the provider's own CRDs, fetched and never vendored, at the
+# release the Platform's Provider package names. That manifest is the single
+# source of the version: Renovate moves it in the Platform repository, so a
+# second copy here would fall behind. Their object schemas are closed (no
+# unknown fields), so a field the CRD does not define is an error.
 #
-# Keep PROVIDER_REF equal to the version the Platform's Provider package pins,
-# and change both in the same review (see AGENTS.md).
+# PLATFORM_PROVIDER_MANIFEST overrides where the Provider manifest is read from
+# (any URL curl accepts, including file://); the self-test uses it.
 #
 # Usage: validate-crd-schemas.sh <rendered-manifests.yaml>
 # Exit: 0 every resource is valid, 1 a resource is invalid or has no pinned
-#       schema, 2 usage error or a required tool or CRD is unavailable.
+#       schema, 2 usage error, or a required tool, the Platform's provider
+#       version or a CRD is unavailable.
 
 set -euo pipefail
 
 PROVIDER_REPO="devantler-tech/provider-upjet-unifi"
-PROVIDER_REF="v1.0.4"
+PROVIDER_PACKAGE="ghcr.io/${PROVIDER_REPO}"
+PLATFORM_PROVIDER_MANIFEST="${PLATFORM_PROVIDER_MANIFEST:-https://raw.githubusercontent.com/devantler-tech/platform/main/k8s/providers/hetzner/infrastructure/crossplane/provider-upjet-unifi.yaml}"
 # The CRDs in the provider's package/crds directory for each kind this repository manages.
 CRDS=(
   "vpn.unifi.m.crossplane.io_clients.yaml"
@@ -42,6 +46,22 @@ yq --version 2>&1 | grep -q 'version v4' || { echo "validate-crd-schemas: yq v4 
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 schemas="${work}/schemas"
+
+# Read the provider release the Platform runs. Anything but one release tag on the
+# expected package is unknown (exit 2), never a pass against a guessed version.
+curl -fsSL "${PLATFORM_PROVIDER_MANIFEST}" -o "${work}/provider.yaml" \
+  || { echo "validate-crd-schemas: could not read the Platform's Provider manifest at ${PLATFORM_PROVIDER_MANIFEST}" >&2; exit 2; }
+package="$(yq e 'select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package' "${work}/provider.yaml")" \
+  || { echo "validate-crd-schemas: the Platform's Provider manifest does not parse" >&2; exit 2; }
+# An optional @sha256 digest may follow the tag; the tag names the release.
+package="${package%@sha256:*}"
+PROVIDER_REF="${package#"${PROVIDER_PACKAGE}:"}"
+# The bash match anchors to the whole value, so two Provider documents (two lines) fail too.
+if [ "${PROVIDER_REF}" = "${package}" ] || ! [[ "${PROVIDER_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "validate-crd-schemas: the Platform's Provider package is not ${PROVIDER_PACKAGE}:v<major>.<minor>.<patch> (got '${package}')" >&2
+  exit 2
+fi
+echo "validate-crd-schemas: validating against ${PROVIDER_REPO} ${PROVIDER_REF}, the release the Platform runs"
 base="https://raw.githubusercontent.com/${PROVIDER_REPO}/${PROVIDER_REF}/package/crds"
 
 for crd in "${CRDS[@]}"; do
