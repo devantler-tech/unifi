@@ -37,10 +37,20 @@ kubectl kustomize . | kubeconform -strict -ignore-missing-schemas -summary
 
 Expect `Valid: 0, Invalid: 0, Errors: 0, Skipped: 9`. All nine resources are skipped
 because their kinds are custom resources whose schemas `kubeconform` does not have, so
-this check catches malformed YAML and nothing more. The fields are validated against
-the provider's schemas (in
-[`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
-under `package/crds/`) only when the resources are applied on the platform.
+this check catches malformed YAML and nothing more.
+
+CI also checks every field against the provider's own CRD schema, for the release the
+Platform pins. To run that check locally, render the manifests to a file outside the
+repository and pass it to the script. It needs network access, plus `kubeconform`, `yq` (v4)
+and `jq`:
+
+```sh
+kubectl kustomize . > "${TMPDIR:-/tmp}/unifi-manifests.yaml"
+bash scripts/validate-crd-schemas.sh "${TMPDIR:-/tmp}/unifi-manifests.yaml"
+```
+
+Expect `Valid: 9, Invalid: 0, Errors: 0, Skipped: 0`. A misspelled field, a wrong value type
+or a missing required field makes the check fail.
 
 ## Current state: everything here is paused
 
