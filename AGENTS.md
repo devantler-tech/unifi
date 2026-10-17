@@ -81,8 +81,12 @@ status.
 **Provider version.** The check reads the release from the Platform's `Provider` package
 manifest on the Platform's `main` branch, so there is no second version to keep in step here:
 when Renovate moves the Platform to a new provider release, the next run here validates against
-it. A manifest that cannot be read, or that does not name one `vX.Y.Z` release of
-`ghcr.io/devantler-tech/provider-upjet-unifi`, fails the check (exit 2), never passes it.
+it. That run comes only with a push or a pull request here, so a Platform bump is applied before
+this repository re-checks it ([#81](https://github.com/devantler-tech/unifi/issues/81)), and
+re-running an old commit checks it against the Platform's current release, not the one it first
+passed against. A manifest that cannot be read, or that does not name one `vX.Y.Z` release of
+`ghcr.io/devantler-tech/provider-upjet-unifi`, fails the check (exit 2), never passes it. So does a
+pinned `@sha256` digest that is malformed, or that the registry does not give for that tag.
 
 Required CI also scans README and AGENTS for links to configured retired repositories.
 The immutable-pinned validator uses `.github/retired-repo-links.json`; its offline

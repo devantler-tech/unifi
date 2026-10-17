@@ -4,6 +4,9 @@
 # each seeded defect must fail. A check that passes on broken input is a defect,
 # so every seeded case runs against its own copy of the manifests.
 #
+# The Platform's Provider manifest is read only by the validator, so
+# PLATFORM_PROVIDER_MANIFEST points the self-test at a local copy too.
+#
 # Usage: test-validate-crd-schemas.sh <rendered-manifests.yaml>
 
 set -euo pipefail
@@ -77,6 +80,9 @@ expect_reject() {
 
 # 1. The rendered manifests are valid.
 expect_pass "current manifests pass" "${manifests}"
+# The release the Platform runs, as the validator just read it. Scenarios 7–16 build on it, so the
+# self-test never reads or parses the Platform's manifest a second time.
+release="$(sed -n 's/^validate-crd-schemas: validating against devantler-tech\/provider-upjet-unifi \(v[0-9][0-9.]*\), the release the Platform runs$/\1/p' "${work}/last.log")"
 
 # 2. A misspelled field in a Client fails: the closed schema rejects unknown fields.
 yq e '(select(.kind == "Client") | .spec.forProvider.subnetx) = "10.0.0.1/32"' "${manifests}" > "${work}/typo.yaml"
@@ -105,38 +111,65 @@ else
   failures=$((failures + 1))
 fi
 
-# 7–11. The version comes from the Platform's Provider manifest. Fixtures are built from the
-# manifest the Platform pins today, so they follow its release instead of a second copy here.
-live="${work}/provider-live.yaml"
-curl -fsSL "https://raw.githubusercontent.com/devantler-tech/platform/main/k8s/providers/hetzner/infrastructure/crossplane/provider-upjet-unifi.yaml" -o "${live}" \
-  || { echo "test-validate-crd-schemas: could not read the Platform's Provider manifest" >&2; exit 2; }
-package="$(yq e 'select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package' "${live}")"
-{ [ -n "${package}" ] && [ "${package}" != null ]; } || { echo "test-validate-crd-schemas: the Platform's Provider manifest names no provider-upjet-unifi package" >&2; exit 2; }
-package="${package%@sha256:*}"
-zero_digest="0000000000000000000000000000000000000000000000000000000000000000"
+# 7–16. The release comes from the Platform's Provider manifest. Each fixture is a small Provider
+# document around the release scenario 1 read, so the fixtures follow the Platform's release, and
+# the self-test keeps no second copy of its version or its URL.
+[[ "${release}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { echo "test-validate-crd-schemas: scenario 1 did not report the Platform's provider release (got '${release}')" >&2; exit 2; }
+package="ghcr.io/devantler-tech/provider-upjet-unifi:${release}"
+zero_digest="sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
-yq e "(select(.kind == \"Provider\" and .metadata.name == \"provider-upjet-unifi\") | .spec.package) = \"${package}@sha256:${zero_digest}\"" "${live}" > "${work}/provider-digest.yaml"
-got="$(run_with_provider "${work}/provider-digest.yaml" "${manifests}")"
-if [ "${got}" = "0" ]; then
-  echo "ok   a release tag followed by a digest passes (exit 0)"
+# provider writes a Provider manifest naming the given package to the given file.
+provider() {
+  printf 'apiVersion: pkg.crossplane.io/v1\nkind: Provider\nmetadata:\n  name: provider-upjet-unifi\nspec:\n  package: "%s"\n' "$2" > "$1"
+}
+
+# 7. A digest the tag does not resolve to is unknown: the CRDs at the tag are not what the Platform runs.
+provider "${work}/provider-other-digest.yaml" "${package}@${zero_digest}"
+expect_unknown "a digest the tag does not resolve to is unknown" "resolves to 'sha256:" "${work}/provider-other-digest.yaml"
+
+# 8. The tag with the digest it resolves to passes. The digest is the one scenario 7 reported, so
+# this proves the check accepts a matching digest, not merely that it rejects every digest.
+own_digest="$(sed -n "s/.* resolves to '\(sha256:[0-9a-f]*\)'$/\1/p" "${work}/last.log")"
+if [[ "${own_digest}" =~ ^sha256:[0123456789abcdef]{64}$ ]]; then
+  provider "${work}/provider-own-digest.yaml" "${package}@${own_digest}"
+  got="$(run_with_provider "${work}/provider-own-digest.yaml" "${manifests}")"
 else
-  echo "FAIL a release tag followed by a digest: want exit 0, got ${got}" >&2
+  got="no digest from scenario 7"
+fi
+if [ "${got}" = "0" ]; then
+  echo "ok   a release tag with its own digest passes (exit 0)"
+else
+  echo "FAIL a release tag with its own digest: want exit 0, got ${got}" >&2
   cat "${work}/last.log" >&2
   failures=$((failures + 1))
 fi
 
+# 9–11. A digest that is not one well-formed sha256 is unknown before any registry call.
+provider "${work}/provider-bad-digest.yaml" "${package}@sha256:not-a-digest"
+expect_unknown "a malformed digest is unknown" "got '${package}@sha256:not-a-digest'" "${work}/provider-bad-digest.yaml"
+
+upper_digest="sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+provider "${work}/provider-upper-digest.yaml" "${package}@${upper_digest}"
+expect_unknown "an uppercase digest is unknown" "got '${package}@${upper_digest}'" "${work}/provider-upper-digest.yaml"
+
+provider "${work}/provider-two-digests.yaml" "${package}@${zero_digest}@${zero_digest}"
+expect_unknown "two digests are unknown" "got '${package}@${zero_digest}@${zero_digest}'" "${work}/provider-two-digests.yaml"
+
+# 12–16. Every other shape is unknown too.
 expect_unknown "unreadable Platform manifest is unknown" "could not read the Platform's Provider manifest" "${work}/provider-missing.yaml"
 
-yq e 'del(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package)' "${live}" > "${work}/provider-no-package.yaml"
+printf 'apiVersion: pkg.crossplane.io/v1\nkind: Provider\nmetadata:\n  name: provider-upjet-unifi\nspec: {}\n' > "${work}/provider-no-package.yaml"
 expect_unknown "a Provider without a package is unknown" "got 'null'" "${work}/provider-no-package.yaml"
 
-yq e '(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package) = "ghcr.io/devantler-tech/provider-upjet-unifi:latest"' "${live}" > "${work}/provider-latest.yaml"
+provider "${work}/provider-latest.yaml" "ghcr.io/devantler-tech/provider-upjet-unifi:latest"
 expect_unknown "a non-release tag is unknown" "got 'ghcr.io/devantler-tech/provider-upjet-unifi:latest'" "${work}/provider-latest.yaml"
 
-yq e '(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package) = "ghcr.io/example/other-provider:v1.0.0"' "${live}" > "${work}/provider-other.yaml"
+provider "${work}/provider-other.yaml" "ghcr.io/example/other-provider:v1.0.0"
 expect_unknown "another package is unknown" "got 'ghcr.io/example/other-provider:v1.0.0'" "${work}/provider-other.yaml"
 
-{ cat "${live}"; printf -- '\n---\n'; cat "${live}"; } > "${work}/provider-twice.yaml"
+provider "${work}/provider-once.yaml" "${package}"
+{ cat "${work}/provider-once.yaml"; printf -- '---\n'; cat "${work}/provider-once.yaml"; } > "${work}/provider-twice.yaml"
 expect_unknown "two Provider documents are unknown" "is not ghcr.io/devantler-tech/provider-upjet-unifi" "${work}/provider-twice.yaml"
 
 if [ "${failures}" -gt 0 ]; then

@@ -9,8 +9,9 @@
 # The schemas are the provider's own CRDs, fetched and never vendored, at the
 # release the Platform's Provider package names. That manifest is the single
 # source of the version: Renovate moves it in the Platform repository, so a
-# second copy here would fall behind. Their object schemas are closed (no
-# unknown fields), so a field the CRD does not define is an error.
+# second copy here would fall behind. When the package also pins a digest, the
+# registry must resolve the tag to that same digest. Their object schemas are
+# closed (no unknown fields), so a field the CRD does not define is an error.
 #
 # PLATFORM_PROVIDER_MANIFEST overrides where the Provider manifest is read from
 # (any URL curl accepts, including file://); the self-test uses it.
@@ -18,7 +19,7 @@
 # Usage: validate-crd-schemas.sh <rendered-manifests.yaml>
 # Exit: 0 every resource is valid, 1 a resource is invalid or has no pinned
 #       schema, 2 usage error, or a required tool, the Platform's provider
-#       version or a CRD is unavailable.
+#       version or a CRD is unavailable, or the pinned digest is not the tag's.
 
 set -euo pipefail
 
@@ -53,13 +54,34 @@ curl -fsSL "${PLATFORM_PROVIDER_MANIFEST}" -o "${work}/provider.yaml" \
   || { echo "validate-crd-schemas: could not read the Platform's Provider manifest at ${PLATFORM_PROVIDER_MANIFEST}" >&2; exit 2; }
 package="$(yq e 'select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package' "${work}/provider.yaml")" \
   || { echo "validate-crd-schemas: the Platform's Provider manifest does not parse" >&2; exit 2; }
-# An optional @sha256 digest may follow the tag; the tag names the release.
-package="${package%@sha256:*}"
-PROVIDER_REF="${package#"${PROVIDER_PACKAGE}:"}"
-# The bash match anchors to the whole value, so two Provider documents (two lines) fail too.
-if [ "${PROVIDER_REF}" = "${package}" ] || ! [[ "${PROVIDER_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "validate-crd-schemas: the Platform's Provider package is not ${PROVIDER_PACKAGE}:v<major>.<minor>.<patch> (got '${package}')" >&2
+# The pattern names the only allowed shape: the package, one release tag, and at most one sha256
+# digest. Everything else is unknown, including an empty value, another package or tag, a
+# malformed or repeated digest, and two Provider documents (two lines): bash anchors the match to
+# the whole value. The hex digits are written out, because a range can take in capitals in some
+# locales.
+hex="[0123456789abcdef]"
+if ! [[ "${package}" =~ ^"${PROVIDER_PACKAGE}:"(v[0-9]+\.[0-9]+\.[0-9]+)(@sha256:${hex}{64})?$ ]]; then
+  echo "validate-crd-schemas: the Platform's Provider package is not ${PROVIDER_PACKAGE}:v<major>.<minor>.<patch>, optionally followed by one @sha256:<64 lowercase hex> digest (got '${package}')" >&2
   exit 2
+fi
+PROVIDER_REF="${BASH_REMATCH[1]}"
+pinned="${BASH_REMATCH[2]#@}"
+
+# With a digest, the image the Platform runs is the digest, not the tag. The CRDs read at the
+# tag are the right ones only when the tag points at that digest, so the registry must agree.
+if [ -n "${pinned}" ]; then
+  token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${PROVIDER_REPO}:pull" | jq -er '.token')" \
+    || { echo "validate-crd-schemas: could not get a registry pull token for ${PROVIDER_PACKAGE}" >&2; exit 2; }
+  resolved="$(curl -fsSI \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+    "https://ghcr.io/v2/${PROVIDER_REPO}/manifests/${PROVIDER_REF}" \
+    | tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" { print $2 }')" \
+    || { echo "validate-crd-schemas: could not resolve ${PROVIDER_PACKAGE}:${PROVIDER_REF} in the registry" >&2; exit 2; }
+  if [ "${resolved}" != "${pinned}" ]; then
+    echo "validate-crd-schemas: the Platform pins ${pinned}, but ${PROVIDER_PACKAGE}:${PROVIDER_REF} resolves to '${resolved}'" >&2
+    exit 2
+  fi
 fi
 echo "validate-crd-schemas: validating against ${PROVIDER_REPO} ${PROVIDER_REF}, the release the Platform runs"
 base="https://raw.githubusercontent.com/${PROVIDER_REPO}/${PROVIDER_REF}/package/crds"
