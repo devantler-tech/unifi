@@ -111,7 +111,8 @@ live="${work}/provider-live.yaml"
 curl -fsSL "https://raw.githubusercontent.com/devantler-tech/platform/main/k8s/providers/hetzner/infrastructure/crossplane/provider-upjet-unifi.yaml" -o "${live}" \
   || { echo "test-validate-crd-schemas: could not read the Platform's Provider manifest" >&2; exit 2; }
 package="$(yq e 'select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package' "${live}")"
-[ -n "${package}" ] || { echo "test-validate-crd-schemas: the Platform's Provider manifest names no provider-upjet-unifi package" >&2; exit 2; }
+{ [ -n "${package}" ] && [ "${package}" != null ]; } || { echo "test-validate-crd-schemas: the Platform's Provider manifest names no provider-upjet-unifi package" >&2; exit 2; }
+package="${package%@sha256:*}"
 zero_digest="0000000000000000000000000000000000000000000000000000000000000000"
 
 yq e "(select(.kind == \"Provider\" and .metadata.name == \"provider-upjet-unifi\") | .spec.package) = \"${package}@sha256:${zero_digest}\"" "${live}" > "${work}/provider-digest.yaml"
