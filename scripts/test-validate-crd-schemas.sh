@@ -110,10 +110,11 @@ fi
 live="${work}/provider-live.yaml"
 curl -fsSL "https://raw.githubusercontent.com/devantler-tech/platform/main/k8s/providers/hetzner/infrastructure/crossplane/provider-upjet-unifi.yaml" -o "${live}" \
   || { echo "test-validate-crd-schemas: could not read the Platform's Provider manifest" >&2; exit 2; }
-package="$(yq e 'select(.kind == "Provider") | .spec.package' "${live}")"
+package="$(yq e 'select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package' "${live}")"
+[ -n "${package}" ] || { echo "test-validate-crd-schemas: the Platform's Provider manifest names no provider-upjet-unifi package" >&2; exit 2; }
 zero_digest="0000000000000000000000000000000000000000000000000000000000000000"
 
-yq e "(select(.kind == \"Provider\") | .spec.package) = \"${package}@sha256:${zero_digest}\"" "${live}" > "${work}/provider-digest.yaml"
+yq e "(select(.kind == \"Provider\" and .metadata.name == \"provider-upjet-unifi\") | .spec.package) = \"${package}@sha256:${zero_digest}\"" "${live}" > "${work}/provider-digest.yaml"
 got="$(run_with_provider "${work}/provider-digest.yaml" "${manifests}")"
 if [ "${got}" = "0" ]; then
   echo "ok   a release tag followed by a digest passes (exit 0)"
@@ -125,10 +126,10 @@ fi
 
 expect_unknown "unreadable Platform manifest is unknown" "could not read the Platform's Provider manifest" "${work}/provider-missing.yaml"
 
-yq e '(select(.kind == "Provider") | .spec.package) = "ghcr.io/devantler-tech/provider-upjet-unifi:latest"' "${live}" > "${work}/provider-latest.yaml"
+yq e '(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package) = "ghcr.io/devantler-tech/provider-upjet-unifi:latest"' "${live}" > "${work}/provider-latest.yaml"
 expect_unknown "a non-release tag is unknown" "got 'ghcr.io/devantler-tech/provider-upjet-unifi:latest'" "${work}/provider-latest.yaml"
 
-yq e '(select(.kind == "Provider") | .spec.package) = "ghcr.io/example/other-provider:v1.0.0"' "${live}" > "${work}/provider-other.yaml"
+yq e '(select(.kind == "Provider" and .metadata.name == "provider-upjet-unifi") | .spec.package) = "ghcr.io/example/other-provider:v1.0.0"' "${live}" > "${work}/provider-other.yaml"
 expect_unknown "another package is unknown" "got 'ghcr.io/example/other-provider:v1.0.0'" "${work}/provider-other.yaml"
 
 { cat "${live}"; printf -- '\n---\n'; cat "${live}"; } > "${work}/provider-twice.yaml"
