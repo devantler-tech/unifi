@@ -174,11 +174,13 @@ expect_unknown "two Provider documents are unknown" "is not ghcr.io/devantler-te
 
 # 17. The validator uses the release the Provider manifest names, checked against a version this
 # test states itself. Scenarios 7–16 build on the release scenario 1 reported, so on their own they
-# would still pass if the validator picked the wrong release. v1.0.5 is a published, immutable tag
-# whose CRDs accept the current manifests.
+# would still pass if the validator picked the wrong release. v1.0.5 is a published, immutable tag.
+# The manifests here are empty, so the scenario checks which release is read and fetched, and never
+# depends on whether today's manifests use a field that release lacks.
 known_release="v1.0.5"
 provider "${work}/provider-known.yaml" "ghcr.io/devantler-tech/provider-upjet-unifi:${known_release}"
-got="$(run_with_provider "${work}/provider-known.yaml" "${manifests}")"
+: > "${work}/empty.yaml"
+got="$(run_with_provider "${work}/provider-known.yaml" "${work}/empty.yaml")"
 if [ "${got}" = "0" ] \
   && grep -qx "validate-crd-schemas: validating against devantler-tech/provider-upjet-unifi ${known_release}, the release the Platform runs" "${work}/last.log"; then
   echo "ok   the validator uses the release the Provider manifest names (exit 0, ${known_release})"
