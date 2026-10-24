@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   merge_group:
+  # The field check reads the provider release from the Platform's main branch, and a
+  # Platform provider bump triggers nothing here. Re-checking main daily means a
+  # release that breaks these manifests turns main red within a day, with no push.
+  schedule:
+    - cron: "41 5 * * *"  # daily, 05:41 UTC
+  workflow_dispatch:
 
 permissions: {}
 
