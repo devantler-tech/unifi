@@ -23,8 +23,8 @@ cd unifi
 kubectl kustomize .
 ```
 
-Success is a zero exit status and nine rendered resources: one `Client`, one
-`TrafficRoute` and seven `Record`s, each carrying the annotation
+Success is a zero exit status and eight rendered resources: one `Client`, one
+`TrafficRoute` and six `Record`s, each carrying the annotation
 `crossplane.io/paused: "true"`. The render builds the checked-in manifest set. It does
 not apply anything, contact the controller or prove that the live network matches.
 
@@ -35,7 +35,7 @@ also run the structural check CI runs:
 kubectl kustomize . | kubeconform -strict -ignore-missing-schemas -summary
 ```
 
-Expect `Valid: 0, Invalid: 0, Errors: 0, Skipped: 9`. All nine resources are skipped
+Expect `Valid: 0, Invalid: 0, Errors: 0, Skipped: 8`. All eight resources are skipped
 because their kinds are custom resources whose schemas `kubeconform` does not have, so
 this check catches malformed YAML and nothing more.
 
@@ -49,7 +49,7 @@ kubectl kustomize . > "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 bash scripts/validate-crd-schemas.sh "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 ```
 
-Expect `Valid: 9, Invalid: 0, Errors: 0, Skipped: 0`. A misspelled field, a wrong value type
+Expect `Valid: 8, Invalid: 0, Errors: 0, Skipped: 0`. A misspelled field, a wrong value type
 or a missing required field makes the check fail.
 
 ## Current state: everything here is paused
