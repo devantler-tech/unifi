@@ -86,16 +86,3 @@ spec:
   providerConfigRef:
     kind: ProviderConfig
     name: default
----
-apiVersion: dns.unifi.m.crossplane.io/v1alpha1
-kind: Record
-metadata:
-  name: admin-headlamp
-spec:
-  forProvider:
-    name: headlamp.platform.devantler.tech
-    recordType: A
-    value: 10.200.0.10
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default

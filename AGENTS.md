@@ -66,7 +66,7 @@ kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
 ```
 
 `kubectl kustomize .` is the same render without a separate `kustomize` install. With
-`-ignore-missing-schemas` every resource here is **skipped** (`Skipped: 9`), so that step
+`-ignore-missing-schemas` every resource here is **skipped** (`Skipped: 8`), so that step
 proves the YAML is well-formed and nothing about the fields.
 
 Field validation is `scripts/validate-crd-schemas.sh <rendered-manifests.yaml>`. It fetches
