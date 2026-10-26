@@ -145,7 +145,7 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: 📊 Require all CI checks to pass
-        uses: devantler-tech/.github/actions/aggregate-job-checks@7bf35c4fb0c2ccd8d1c08585e6ec5979a819d18e # v12.0.4
+        uses: devantler-tech/.github/actions/aggregate-job-checks@3bce8f19f5fe5dfea04695e0209061c32a94149f # v13.3.0
         with:
           job-results: >-
             ${{ needs.validate.result }}
