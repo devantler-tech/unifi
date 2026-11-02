@@ -141,12 +141,14 @@ jobs:
     name: CI - Required Checks
     runs-on: ubuntu-latest
     needs: [validate, retired-repo-links]
-    permissions: {}
+    permissions:
+      actions: read
     if: ${{ always() }}
     steps:
       - name: 📊 Require all CI checks to pass
-        uses: devantler-tech/.github/actions/aggregate-job-checks@bd24a3e1bbbf6aba2d7afd58a2fd8a3d67bebe6b # v19.0.3
+        uses: devantler-tech/.github/actions/aggregate-job-checks@0966f4b015e85ef14be37411d424a7028a858550 # v19.0.8
         with:
           job-results: >-
             ${{ needs.validate.result }}
             ${{ needs.retired-repo-links.result }}
+          check-workflow-startup: "true"
