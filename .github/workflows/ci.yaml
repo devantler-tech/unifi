@@ -151,4 +151,5 @@ jobs:
           job-results: >-
             ${{ needs.validate.result }}
             ${{ needs.retired-repo-links.result }}
-          check-workflow-startup: "true"
+          # The check accepts only these events; scheduled and manual runs would fail on it.
+          check-workflow-startup: ${{ contains(fromJSON('["pull_request","push","merge_group"]'), github.event_name) }}
