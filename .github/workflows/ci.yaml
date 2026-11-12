@@ -33,7 +33,7 @@ jobs:
 
       - name: Check documentation links
         id: links
-        uses: devantler-tech/.github/actions/validate-retired-repo-links@2666baeaf1384d3c2d918e19692b8a6d9fb6fd78  # v21.1.1
+        uses: devantler-tech/.github/actions/validate-retired-repo-links@d2eeb91d37fcc8a13423c1bdfaf5079b30426625  # v21.1.5
         with:
           enabled: "true"
 
@@ -52,7 +52,7 @@ jobs:
       - name: Reject the retired README link
         id: retired
         continue-on-error: true
-        uses: devantler-tech/.github/actions/validate-retired-repo-links@2666baeaf1384d3c2d918e19692b8a6d9fb6fd78  # v21.1.1
+        uses: devantler-tech/.github/actions/validate-retired-repo-links@d2eeb91d37fcc8a13423c1bdfaf5079b30426625  # v21.1.5
         with:
           enabled: "true"
           working-directory: ${{ runner.temp }}/retired-links-fixture
@@ -60,7 +60,7 @@ jobs:
       - name: Reject missing configuration
         id: missing
         continue-on-error: true
-        uses: devantler-tech/.github/actions/validate-retired-repo-links@2666baeaf1384d3c2d918e19692b8a6d9fb6fd78  # v21.1.1
+        uses: devantler-tech/.github/actions/validate-retired-repo-links@d2eeb91d37fcc8a13423c1bdfaf5079b30426625  # v21.1.5
         with:
           enabled: "true"
           config-file: .github/missing-retired-repo-links.json
