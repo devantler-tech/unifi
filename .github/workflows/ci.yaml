@@ -100,42 +100,42 @@ jobs:
   validate:
     name: Validate (Crossplane manifests)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     env:
-      KUSTOMIZE_VERSION: v5.8.1
-      KUBECONFORM_VERSION: v0.8.0
+      # The CLI is downloaded from Crossplane's release host and checked against this digest
+      # before it runs. The image supplies Crossplane's built-in schemas; keep it at the version
+      # the Platform runs (its crossplane HelmRelease). The provider version is not pinned here:
+      # the validator reads it from the Platform's Provider manifest.
+      CROSSPLANE_CLI_VERSION: v2.5.0
+      CROSSPLANE_CLI_SHA256: 065dd6b40c9ea5fc71e49900d5c924cc0bec7f58375922ddbde6b402f292347e
+      CROSSPLANE_IMAGE: xpkg.crossplane.io/crossplane/crossplane:v2.4.3
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install kustomize + kubeconform
+      - name: Install the Crossplane CLI
         run: |
-          set -euo pipefail
-          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" | tar -xz kustomize
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar -xz kubeconform
-          sudo install -m 0755 kustomize kubeconform /usr/local/bin/
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/crossplane" \
+            "https://cli.crossplane.io/stable/${CROSSPLANE_CLI_VERSION}/bin/linux_amd64/crossplane"
+          echo "${CROSSPLANE_CLI_SHA256}  $RUNNER_TEMP/crossplane" | sha256sum --check --strict
+          chmod +x "$RUNNER_TEMP/crossplane"
+          "$RUNNER_TEMP/crossplane" version --client
 
       - name: Build manifests
-        run: kustomize build . > manifests.yaml
+        # kubectl, with its built-in kustomize, is preinstalled on the runner.
+        run: kubectl kustomize . > "$RUNNER_TEMP/manifests.yaml"
 
-      - name: Validate manifests
-        # Structural + Kubernetes-schema validation. The UniFi MR kinds are
-        # CRDs from provider-upjet-unifi, validated authoritatively server-side
-        # by the API server / Crossplane at apply time (and locally against the
-        # provider CRDs — see AGENTS.md), so skip their missing client schemas here.
-        run: kubeconform -strict -ignore-missing-schemas -summary -verbose manifests.yaml
+      - name: Validate manifests against the provider the Platform runs
+        # Checks every field against the provider package the Platform pins, and fails on a
+        # kind no schema covers (see scripts/validate-crossplane-schemas.sh and AGENTS.md).
+        run: bash scripts/validate-crossplane-schemas.sh "$RUNNER_TEMP/crossplane" "$RUNNER_TEMP/manifests.yaml"
 
-      - name: Validate fields against the provider CRD schema
-        # The step above skips every UniFi kind, because the public catalogue has no
-        # schema for them. This step checks each field against the provider release
-        # the Platform pins (see scripts/validate-crd-schemas.sh and AGENTS.md).
-        run: bash scripts/validate-crd-schemas.sh manifests.yaml
-
-      - name: Check the field validation catches seeded defects
-        run: bash scripts/test-validate-crd-schemas.sh manifests.yaml
+      - name: Check the validation catches seeded defects
+        run: bash scripts/test-validate-crossplane-schemas.sh "$RUNNER_TEMP/crossplane" "$RUNNER_TEMP/manifests.yaml"
 
   ci-required-checks:
     name: CI - Required Checks

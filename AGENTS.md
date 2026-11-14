@@ -61,22 +61,21 @@ ids; service-account setup & API-key rotation; troubleshooting).
 ## Validate before any PR (locally)
 
 ```sh
-kustomize build .                                            # render the MRs
-kustomize build . | kubeconform -strict -ignore-missing-schemas -summary
+kubectl kustomize . > "${TMPDIR:-/tmp}/unifi-manifests.yaml"     # render the MRs
+CROSSPLANE_IMAGE=xpkg.crossplane.io/crossplane/crossplane:v2.4.3 \
+  bash scripts/validate-crossplane-schemas.sh "$(command -v crossplane)" "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 ```
 
-`kubectl kustomize .` is the same render without a separate `kustomize` install. With
-`-ignore-missing-schemas` every resource here is **skipped** (`Skipped: 8`), so that step
-proves the YAML is well-formed and nothing about the fields.
-
-Field validation is `scripts/validate-crd-schemas.sh <rendered-manifests.yaml>`. It fetches
-the provider's CRDs from [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
-at the release the Platform runs, closes each object schema so an unknown field is an error,
-and runs `kubeconform -strict` with no skip, so a kind without a pinned schema fails too. It
-needs network access, plus `curl`, `kubeconform`, `yq` (v4) and `jq`.
-`scripts/test-validate-crd-schemas.sh` seeds the defects the check must catch. CI re-runs all
-of it on every PR and aggregates the results into the single required `CI - Required Checks`
-status.
+Validation is `crossplane resource validate`, wrapped by
+`scripts/validate-crossplane-schemas.sh <crossplane-binary> <rendered-manifests.yaml>`. It
+passes the Platform's `Provider` manifest to Crossplane as the package to validate against, so
+every field is checked against the provider's own schema, an unknown field is an error, and a kind
+no schema covers fails (`--error-on-missing-schemas`). It needs network access, plus the
+[Crossplane CLI](https://docs.crossplane.io/latest/cli/), `curl` and `yq` (v4).
+`scripts/test-validate-crossplane-schemas.sh` seeds the defects the check must catch. CI re-runs
+all of it on every PR and aggregates the results into the single required `CI - Required Checks`
+status. `CROSSPLANE_IMAGE` supplies Crossplane's built-in schemas; keep it at the version the
+Platform's crossplane HelmRelease runs.
 
 **Provider version.** The check reads the release from the Platform's `Provider` package
 manifest on the Platform's `main` branch, so there is no second version to keep in step here:
@@ -86,8 +85,8 @@ it. A Platform bump triggers nothing in this repository, so CI also runs on `mai
 bump merging, with no push needed. The Platform may already be running that release by then.
 Re-running an old commit checks it against the Platform's current release, not the one it first
 passed against. A manifest that cannot be read, or that does not name one `vX.Y.Z` release of
-`ghcr.io/devantler-tech/provider-upjet-unifi`, fails the check (exit 2), never passes it. So does a
-pinned `@sha256` digest that is malformed, or that the registry does not give for that tag.
+`ghcr.io/devantler-tech/provider-upjet-unifi`, fails the check (exit 2), never passes it. A pinned
+`@sha256` digest is what Crossplane pulls, so a digest the registry does not hold fails too.
 
 Required CI also scans README and AGENTS for links to configured retired repositories.
 The immutable-pinned validator uses `.github/retired-repo-links.json`; its offline
@@ -123,7 +122,7 @@ PR; fix at the root cause; begin every PR/issue/comment with
   changelog and re-check the manifests).
 - **CI/workflow health:** keep CI green and tidy (pin/align actions, fix
   broken/flaky steps); red on `main` is top priority.
-- **Config freshness:** the manifests `kustomize build` + `kubeconform` cleanly;
+- **Config freshness:** the manifests render and pass `crossplane resource validate`;
   resources stay adopt-first and reflect the real network; docs accurate.
 - **Maintain your own PRs:** fix CI you caused, resolve conflicts.
 
