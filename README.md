@@ -28,29 +28,21 @@ Success is a zero exit status and eight rendered resources: one `Client`, one
 `crossplane.io/paused: "true"`. The render builds the checked-in manifest set. It does
 not apply anything, contact the controller or prove that the live network matches.
 
-If you have [`kubeconform`](https://github.com/yannh/kubeconform) installed, you can
-also run the structural check CI runs:
-
-```sh
-kubectl kustomize . | kubeconform -strict -ignore-missing-schemas -summary
-```
-
-Expect `Valid: 0, Invalid: 0, Errors: 0, Skipped: 8`. All eight resources are skipped
-because their kinds are custom resources whose schemas `kubeconform` does not have, so
-this check catches malformed YAML and nothing more.
-
-CI also checks every field against the provider's own CRD schema, for the release the
-Platform pins. To run that check locally, render the manifests to a file outside the
-repository and pass it to the script. It needs network access, plus `kubeconform`, `yq` (v4)
-and `jq`:
+CI also checks every field against the provider's own schema with
+[`crossplane resource validate`](https://docs.crossplane.io/latest/cli/command-reference/), for
+the provider release the Platform pins. To run that check locally, render the manifests to a file
+outside the repository and pass it to the script with the Crossplane CLI. It needs network access,
+plus `curl` and `yq` (v4); `CROSSPLANE_IMAGE` is the Crossplane version CI pins in
+[`ci.yaml`](.github/workflows/ci.yaml):
 
 ```sh
 kubectl kustomize . > "${TMPDIR:-/tmp}/unifi-manifests.yaml"
-bash scripts/validate-crd-schemas.sh "${TMPDIR:-/tmp}/unifi-manifests.yaml"
+CROSSPLANE_IMAGE=xpkg.crossplane.io/crossplane/crossplane:v2.4.3 \
+  bash scripts/validate-crossplane-schemas.sh "$(command -v crossplane)" "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 ```
 
-Expect `Valid: 8, Invalid: 0, Errors: 0, Skipped: 0`. A misspelled field, a wrong value type
-or a missing required field makes the check fail.
+Expect `Total 8 resources: 0 missing schemas, 8 success cases, 0 failure cases`. A misspelled
+field, a wrong value type, a missing required field or a kind no schema covers makes the check fail.
 
 ## Current state: everything here is paused
 
