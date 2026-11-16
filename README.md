@@ -20,7 +20,7 @@ want a source checkout:
 ```sh
 git clone https://github.com/devantler-tech/unifi.git
 cd unifi
-kubectl kustomize .
+kubectl kustomize deploy
 ```
 
 Success is a zero exit status and eight rendered resources: one `Client`, one
@@ -36,7 +36,7 @@ plus `curl` and `yq` (v4); `CROSSPLANE_IMAGE` is the Crossplane version CI pins 
 [`ci.yaml`](.github/workflows/ci.yaml):
 
 ```sh
-kubectl kustomize . > "${TMPDIR:-/tmp}/unifi-manifests.yaml"
+kubectl kustomize deploy > "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 CROSSPLANE_IMAGE=xpkg.crossplane.io/crossplane/crossplane:v2.4.3 \
   bash scripts/validate-crossplane-schemas.sh "$(command -v crossplane)" "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 ```
@@ -47,14 +47,14 @@ field, a wrong value type, a missing required field or a kind no schema covers m
 ## Current state: everything here is paused
 
 Every resource in this repository is held with `crossplane.io/paused: "true"`, set
-once in [`kustomization.yaml`](kustomization.yaml). While a resource is paused,
+once in [`deploy/kustomization.yaml`](deploy/kustomization.yaml). While a resource is paused,
 Crossplane does not create, change or delete anything on the controller for it.
 
 The pause is deliberate. The resources still contain placeholders (the VPN peer
 address, the VPN network id and the internal address the admin DNS records point at)
 that can be filled in only once the platform's WireGuard server exists. Applying them
 earlier would fail the VPN client and point the admin hostnames at an address that
-does not answer. The comment in `kustomization.yaml` records when the pause may be
+does not answer. The comment in `deploy/kustomization.yaml` records when the pause may be
 lifted. Removing the annotation is a reviewed change to the live network, never a
 documentation or onboarding step.
 
@@ -67,18 +67,22 @@ store: the Managed Resource *is* the state, with its observed status in
 `.status.atProvider`.
 
 ```
-this repo (Crossplane MRs)
-   │ Flux GitRepository (one pinned, signed commit) + Kustomization  →  namespace: unifi
+this repo: deploy/ (Crossplane MRs)
+   │ release v1.2.3 → signed artifact oci://ghcr.io/devantler-tech/unifi/manifests
+   │ Flux OCIRepository (newest stable release) + Kustomization  →  namespace: unifi
    ▼
 provider-upjet-unifi (Crossplane, crossplane-system)  ──►  UniFi Controller API
 ```
 
-The [platform](https://github.com/devantler-tech/platform) reads this repository at
-**one commit it pins** and verifies that commit's signature before applying the
-resources into the `unifi` namespace. There `provider-upjet-unifi` reconciles each
-resource that is not paused against the UniFi controller API. A merge here therefore
-changes nothing on the platform by itself: the pinned commit is moved in a separately
-reviewed platform change.
+Every merge to `main` with a `feat` or `fix` commit cuts a release
+([`release.yaml`](.github/workflows/release.yaml)). Each release tag publishes `deploy/`,
+keylessly signed by this repository's own [`cd.yaml`](.github/workflows/cd.yaml) on that tag.
+The [platform](https://github.com/devantler-tech/platform) accepts only that signature,
+follows the newest stable release and applies it into the `unifi` namespace within minutes,
+with no platform change. There `provider-upjet-unifi` reconciles each resource that is not
+paused against the UniFi controller API. A released change to `deploy/` is therefore a change
+to the live network. Until the platform switches its source to the artifact, it still reads
+this repository at one commit it pins and verifies.
 
 ## Golden rule: adopt-first
 

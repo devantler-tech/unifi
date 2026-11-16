@@ -1,4 +1,4 @@
-# Local build output (e.g. `kustomize build . > manifests.yaml`)
+# Local build output (e.g. `kubectl kustomize deploy > manifests.yaml`)
 manifests.yaml
 /dist/
 

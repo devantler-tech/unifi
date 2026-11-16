@@ -1,0 +1,26 @@
+name: 🎉 Release
+
+# Cuts the next release from main with semantic-release, through the organisation's shared
+# create-release workflow. It creates the `v<semver>` tag with the organisation's release App:
+# only the release process may create a release tag, and release tags cannot be moved or
+# deleted (organisation rulesets). Each tag triggers cd.yaml, which publishes deploy/ as the
+# signed manifests artifact the platform follows (monorepo ADR 0017 and ADR 0019).
+#
+# `feat` cuts a minor release, `fix` a patch and a breaking change (`!` or BREAKING CHANGE) a
+# major; `docs`, `ci`, `chore` and Dependabot's `build(deps)` cut nothing (see .releaserc).
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  release:
+    uses: devantler-tech/.github/.github/workflows/create-release.yaml@d70d50665465117f01104313e53057374a96a1a3 # v21.7.2
+    with:
+      disable-issue-side-effects: true
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

@@ -41,6 +41,11 @@ is the repo's central safety property.
 5. **Only now edit fields** to actually change the network, in a follow-up commit, so
    the diff is purely your intended change.
 
+Each step reaches the cluster only through a release: merge it as a `feat` or `fix`
+commit, and the platform applies the release within minutes (see
+[AGENTS.md → Releases](../AGENTS.md#releases)). A `docs`, `ci` or `chore` commit releases
+nothing.
+
 ### Retire an object
 
 Removing a Managed Resource from this repository never deletes the live UniFi object:
