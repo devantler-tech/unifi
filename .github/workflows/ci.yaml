@@ -127,7 +127,7 @@ jobs:
 
       - name: Build manifests
         # kubectl, with its built-in kustomize, is preinstalled on the runner.
-        run: kubectl kustomize . > "$RUNNER_TEMP/manifests.yaml"
+        run: kubectl kustomize deploy > "$RUNNER_TEMP/manifests.yaml"
 
       - name: Validate manifests against the provider the Platform runs
         # Checks every field against the provider package the Platform pins, and fails on a

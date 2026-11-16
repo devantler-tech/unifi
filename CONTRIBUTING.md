@@ -24,7 +24,7 @@ Make a small wording improvement in `README.md` without changing the render comm
 the architecture it describes. From the repository root, run the local baseline:
 
 ```sh
-kubectl kustomize . > /dev/null
+kubectl kustomize deploy > /dev/null
 git diff --check
 ```
 
@@ -43,7 +43,7 @@ revision, so you do not need to run it locally for a first change.
 Read [AGENTS.md](AGENTS.md) before changing a managed resource. Three rules matter most:
 
 - **Leave the pause in place.** Every resource is held with `crossplane.io/paused` in
-  `kustomization.yaml`, for the reasons in the
+  `deploy/kustomization.yaml`, for the reasons in the
   [README](README.md#current-state-everything-here-is-paused). Do not remove it, and do
   not add a resource that must reconcile while the others are paused.
 - **Adopt before you manage.** A resource for something that already exists on the
@@ -52,10 +52,11 @@ Read [AGENTS.md](AGENTS.md) before changing a managed resource. Three rules matt
 - **No secrets.** This repository is public. Credentials and keys live in the platform's
   secret store and are referenced by name only.
 
-Applying these resources, moving the commit the platform pins and changing the
-controller are maintainer operations, not onboarding steps. Do not apply this
-configuration to a cluster or point a provider at a real controller to validate a first
-PR.
+A merged `feat` or `fix` change is released and applied to the live network by the
+platform automatically, so a change under `deploy/` is reviewed as a network change.
+Cutting releases, pinning a release on the platform and changing the controller are
+maintainer operations, not onboarding steps. Do not apply this configuration to a
+cluster or point a provider at a real controller to validate a first PR.
 
 ## Submit your change
 

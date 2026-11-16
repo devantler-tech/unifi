@@ -1,0 +1,53 @@
+name: 🚀 CD
+
+# Publishes deploy/ as the signed manifests artifact oci://ghcr.io/devantler-tech/unifi/manifests
+# on every release tag. The shared publish-app action runs directly in this job, so its keyless
+# signature names THIS workflow on the release tag:
+#
+#   https://github.com/devantler-tech/unifi/.github/workflows/cd.yaml@refs/tags/vX.Y.Z
+#
+# which is the only identity the platform's `unifi` OCIRepository accepts (monorepo ADR 0017).
+# The action refuses a tag that is not a complete `v<semver>` or whose commit is not on main,
+# and a deploy/ that differs from the tagged commit, before it touches the registry. It exposes
+# the version only after the signature verifies. The platform follows the newest stable release
+# (monorepo ADR 0019), so a release reaches the cluster within minutes with no platform change.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  publish:
+    name: 🗳️ Publish manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One publisher at a time; a queued publish is never cancelled, so no release is lost.
+    concurrency:
+      group: publish-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read # checkout and the default-branch fetch
+      packages: write # push the manifests artifact to GHCR
+      id-token: write # keyless cosign signing as this workflow on its release tag
+    steps:
+      - name: 🔒 Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: 📥 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # required: publish-app refuses a persisted credential
+
+      - name: 📦 Publish the signed manifests
+        uses: devantler-tech/.github/actions/publish-app@d70d50665465117f01104313e53057374a96a1a3 # v21.7.2
+        with:
+          mode: manifests
+          # The platform's Flux Kustomization reconciles the artifact root (path ./), which is
+          # this directory: its kustomization.yaml and every manifest it lists.
+          deploy-path: ./deploy

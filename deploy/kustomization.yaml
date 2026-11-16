@@ -1,7 +1,9 @@
 # Desired state of the home UniFi network as Crossplane Managed Resources,
-# reconciled continuously by provider-upjet-unifi on the platform (see README.md).
-# The platform's Flux Kustomization applies these into the `unifi` namespace,
-# where the ProviderConfig `default` and the referenced Secrets live.
+# reconciled continuously by provider-upjet-unifi on the platform (see the README).
+# Each release publishes this directory, and only this directory, as the signed
+# manifests artifact; the platform's Flux Kustomization builds this file at the
+# artifact root and applies the result into the `unifi` namespace, where the
+# ProviderConfig `default` and the referenced Secrets live.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # PAUSED until the platform WireGuard server (WS3) lands. Every resource here still

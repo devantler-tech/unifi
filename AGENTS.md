@@ -11,12 +11,15 @@ The **declarative desired state of the home UniFi network**, written as Crosspla
 [`provider-upjet-unifi`](https://github.com/devantler-tech/provider-upjet-unifi)
 provider). It is a **platform tenant**: reconciled on
 [devantler-tech/platform](https://github.com/devantler-tech/platform), where a Flux
-`GitRepository` reads this repo at **one pinned, signature-verified commit** and a
-`Kustomization` applies the resources into the `unifi` namespace, and the Crossplane
-provider reconciles each one against the controller API. A merge here changes nothing
-live until that pin is moved in a reviewed Platform change. **Every resource is
-currently paused** (`crossplane.io/paused` in `kustomization.yaml`); never remove the
-pause as part of another change. The Managed Resource *is* the state (observed status in
+source reads the manifests in `deploy/`, a `Kustomization` applies them into the `unifi`
+namespace, and the Crossplane provider reconciles each one against the controller API.
+Every release publishes `deploy/` as a **signed manifests artifact** and the platform
+follows the newest stable release by itself (see [Releases](#releases)), so a released
+change to `deploy/` reaches the live network within minutes, with no Platform change:
+review it as a network change. Until the Platform switches its source to the artifact, it
+still reads one pinned, signature-verified commit. **Every resource is currently paused**
+(`crossplane.io/paused` in `deploy/kustomization.yaml`); never remove the pause as part of
+another change. The Managed Resource *is* the state (observed status in
 `.status.atProvider`); there is no Terraform and no separate state store. See
 `README.md` for the architecture, [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
 contributor path, and [`docs/runbook.md`](docs/runbook.md) for the
@@ -25,12 +28,38 @@ ids; service-account setup & API-key rotation; troubleshooting).
 
 ## Layout
 
-- `kustomization.yaml` — lists the Managed Resource manifests (the platform's Flux
-  `Kustomization` applies the build into the `unifi` namespace).
-- `wireguard-vpn-client.yaml` — the WireGuard VPN `Client` + its `TrafficRoute`.
-- `admin-dns.yaml` — split-horizon admin-UI DNS `Record`s.
-- New concerns go in their own small, well-named file and are added to
-  `kustomization.yaml`.
+`deploy/` is exactly what a release publishes and the platform applies; nothing else
+belongs in it.
+
+- `deploy/kustomization.yaml` — lists the Managed Resource manifests (the platform's Flux
+  `Kustomization` builds it at the artifact root and applies the result into the `unifi`
+  namespace).
+- `deploy/wireguard-vpn-client.yaml` — the WireGuard VPN `Client` + its `TrafficRoute`.
+- `deploy/admin-dns.yaml` — split-horizon admin-UI DNS `Record`s.
+- New concerns go in their own small, well-named file in `deploy/` and are added to
+  `deploy/kustomization.yaml`.
+- `.github/workflows/release.yaml` and `cd.yaml` — the release flow (see
+  [Releases](#releases)).
+
+## Releases
+
+- **`release.yaml`** runs the organisation's shared `create-release.yaml` (semantic-release,
+  configured in `.releaserc`) on every push to `main`. `feat` cuts a minor release, `fix` (and
+  `revert`) a patch, and a breaking change (`type!:` or `BREAKING CHANGE`) a major one.
+  `docs`, `ci`, `chore` and Dependabot's `build(deps)` cut nothing, so **a change to `deploy/`
+  must be a `feat` or `fix` to reach the network**.
+- **Only the release process creates a `v*` tag** (organisation ruleset; the release App is
+  the only bypass), and release tags and releases cannot be moved or deleted. Never create,
+  move or delete a release tag by hand. A bad release is fixed by the next release.
+- **`cd.yaml`** runs `devantler-tech/.github/actions/publish-app` in `manifests` mode on each
+  `v*` tag. It refuses a tag whose commit is not on `main` and a `deploy/` that differs from
+  the tagged commit, publishes `deploy/` whole to `oci://ghcr.io/devantler-tech/unifi/manifests`,
+  and signs it keylessly **as `cd.yaml` on that tag**. Run the action directly in that job,
+  never from a reusable workflow: the platform accepts only this repository's own workflow on a
+  release tag as the signer.
+- **The platform follows the newest stable release** (`X.Y.Z`; a pre-release never reaches
+  it), checked every minute (monorepo ADR 0019). An emergency stop is a reviewed Platform
+  change that pins one exact version on the `unifi` source.
 
 ## Non-negotiables
 
@@ -61,7 +90,7 @@ ids; service-account setup & API-key rotation; troubleshooting).
 ## Validate before any PR (locally)
 
 ```sh
-kubectl kustomize . > "${TMPDIR:-/tmp}/unifi-manifests.yaml"     # render the MRs
+kubectl kustomize deploy > "${TMPDIR:-/tmp}/unifi-manifests.yaml"     # render the MRs
 CROSSPLANE_IMAGE=xpkg.crossplane.io/crossplane/crossplane:v2.4.3 \
   bash scripts/validate-crossplane-schemas.sh "$(command -v crossplane)" "${TMPDIR:-/tmp}/unifi-manifests.yaml"
 ```
