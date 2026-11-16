@@ -27,6 +27,7 @@ jobs:
     # One publisher at a time; a queued publish is never cancelled, so no release is lost.
     concurrency:
       group: publish-${{ github.repository }}
+      queue: max
       cancel-in-progress: false
     permissions:
       contents: read # checkout and the default-branch fetch
