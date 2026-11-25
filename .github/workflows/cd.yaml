@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false # required: publish-app refuses a persisted credential
 
       - name: 📦 Publish the signed manifests
-        uses: devantler-tech/.github/actions/publish-app@946fff9cb37042f4c26c3342665727e28bd66c01 # v22.3.0
+        uses: devantler-tech/.github/actions/publish-app@0e02148c251bcd65cfddc1cc7bec49ccce2eea42 # v22.7.0
         with:
           mode: manifests
           # The platform's Flux Kustomization reconciles the artifact root (path ./), which is
